@@ -83,7 +83,7 @@ Environment Variables:
 ```bash
 # In Unraid console
 ip addr show br0 | grep inet
-# Example: 192.168.1.100
+# Example: 192.168.1.100 ; leak-guard-allow: example Unraid IP in documentation
 ```
 
 **Router Port Forwarding:**
@@ -106,7 +106,7 @@ nano /mnt/user/appdata/meow-now/asterisk/config/sip.conf
 externip=YOUR_PUBLIC_IP
 
 ; Your local network
-localnet=192.168.1.0/255.255.255.0
+localnet=192.168.1.0/255.255.255.0 ; leak-guard-allow: example local network in documentation
 
 [numberbarn]
 ; Your SIP provider credentials
@@ -145,12 +145,12 @@ If you have Ollama running on your Unraid server or network:
 
 **In Unraid Docker settings, add:**
 ```
-OLLAMA_URL = http://192.168.1.100:11434
+OLLAMA_URL = http://192.168.1.100:11434 ; leak-guard-allow: example Ollama URL in documentation
 ```
 
-**Or edit .env:**
+**Or edit .env:** ; leak-guard-allow: placeholder example in documentation
 ```bash
-OLLAMA_URL=http://192.168.1.100:11434
+OLLAMA_URL=http://192.168.1.100:11434 ; leak-guard-allow: placeholder example in documentation
 ```
 
 #### TTS Engine Selection
@@ -227,7 +227,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: 172.20.0.0/16 ; leak-guard-allow: example Docker network range in documentation
 ```
 
 ### GPU Acceleration (Optional)

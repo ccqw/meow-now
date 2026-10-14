@@ -7,13 +7,9 @@ name: check.leak-scan
 # scanner and its patterns live in quadseven/infra-public; see
 # _reusable.leak-scan.yml there for the mechanism and exit-code contract.
 #
-# WARN MODE (enforce: false), on purpose, for the first rollout. Replaying the
-# scanner over this repo's history found hits only in old content: example
-# LAN addresses in the setup docs from the initial import, and old PR bodies
-# that cite private repos by a former owner name. A PR that edits those docs
-# would fail an enforcing check on text it did not write. A finding is a
-# warning annotation on the run; it does not fail the check. Flip to enforce
-# once the example addresses are rewritten or marked `leak-guard-allow`.
+# ENFORCE MODE (enforce: true). All safe examples in docs are marked with
+# `leak-guard-allow` comments. The leak scan will now fail the PR on a
+# finding unless explicitly allowed.
 #
 # Warn mode softens FINDINGS only. A scan that could not run (missing
 # scanner, unresolvable diff, empty diff on a PR with changes) is still a
@@ -46,7 +42,7 @@ jobs:
       id-token: write
     with:
       allowed-repo-refs: infra, infra-public, grug
-      enforce: false
+      enforce: true
       deny-list-ssm-param: /infra/leak-scan/deny-list
     secrets:
       aws-role-arn: ${{ secrets.LEAK_SCAN_ROLE_ARN }}
