@@ -7,13 +7,15 @@ name: check.leak-scan
 # scanner and its patterns live in quadseven/infra-public; see
 # _reusable.leak-scan.yml there for the mechanism and exit-code contract.
 #
-# ENFORCE MODE (enforce: true). All safe examples in docs are marked with
-# `leak-guard-allow` comments. The leak scan will now fail the PR on a
-# finding unless explicitly allowed.
+# ENFORCE MODE (enforce: true). The scan fails the check on a finding. The
+# rollout started in warn mode; it was flipped once the tree was checked
+# clean: the setup docs use placeholders instead of example LAN addresses,
+# and the two functional Asterisk configs that need a private range carry a
+# `leak-guard-allow` marker with a reason. A deliberate hit elsewhere needs
+# the same marker on its line.
 #
-# Warn mode softens FINDINGS only. A scan that could not run (missing
-# scanner, unresolvable diff, empty diff on a PR with changes) is still a
-# red check.
+# A scan that could not run (missing scanner, unresolvable diff, empty diff
+# on a PR with changes) is also a red check.
 #
 # `edited` is in the trigger list on purpose: a PR body can leak long after
 # the last push.

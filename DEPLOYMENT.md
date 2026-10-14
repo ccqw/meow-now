@@ -183,7 +183,7 @@ externip=YOUR.PUBLIC.IP.ADDRESS
 ; externrefresh=60
 
 ; Local network (adjust to your LAN)
-localnet=192.168.1.0/255.255.255.0 ; leak-guard-allow: example local network configuration in documentation
+localnet=YOUR.LAN.NETWORK/255.255.255.0
 
 ; SIP and RTP ports
 bindport=5060
@@ -236,11 +236,11 @@ You must forward these ports from your router to your server:
 
 **Router Configuration Steps:**
 
-1. Log into your router (usually http://192.168.1.1) ; leak-guard-allow: common default gateway IP in networking documentation examples
+1. Log into your router (usually http://YOUR_ROUTER_IP)
 2. Find "Port Forwarding" or "Virtual Server" settings
 3. Add two rules:
-    - **SIP**: External 5060 UDP → Internal SERVER_IP:5060 UDP ; leak-guard-allow: placeholder in documentation example
-    - **RTP**: External 10000-10099 UDP → Internal SERVER_IP:10000-10099 UDP ; leak-guard-allow: placeholder in documentation example
+   - **SIP**: External 5060 UDP → Internal SERVER_IP:5060 UDP
+   - **RTP**: External 10000-10099 UDP → Internal SERVER_IP:10000-10099 UDP
 4. Save and reboot router if needed
 
 **Verify ports are open:**

@@ -162,7 +162,7 @@ In `sip.conf`, set your external IP:
 ```ini
 [general]
 externip=YOUR_PUBLIC_IP_HERE
-localnet=192.168.0.0/255.255.0.0  ; Adjust to your local network ; leak-guard-allow: documentation example for local network configuration
+localnet=YOUR.LAN.NETWORK/255.255.0.0  ; Adjust to your local network
 ```
 
 Get your public IP: `curl ifconfig.me`

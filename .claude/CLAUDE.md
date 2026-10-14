@@ -183,8 +183,8 @@ CAT_MONOLOGUE_DURATION=15
 # TTS
 TTS_ENGINE=piper  # or espeak-ng
 
-# Ollama (optional) ; leak-guard-allow: placeholder example in internal documentation
-OLLAMA_URL=http://192.168.1.100:11434 ; leak-guard-allow: placeholder example in internal documentation
+# Ollama (optional)
+OLLAMA_URL=http://YOUR_OLLAMA_HOST:11434
 
 # Cat Personalities
 ENABLE_GRUMPY_CAT=True
