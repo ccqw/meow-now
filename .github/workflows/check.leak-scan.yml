@@ -7,17 +7,19 @@ name: check.leak-scan
 # scanner and its patterns live in quadseven/infra-public; see
 # _reusable.leak-scan.yml there for the mechanism and exit-code contract.
 #
-# WARN MODE (enforce: false), on purpose, for the first rollout. Replaying the
-# scanner over this repo's history found hits only in old content: example
-# LAN addresses in the setup docs from the initial import, and old PR bodies
-# that cite private repos by a former owner name. A PR that edits those docs
-# would fail an enforcing check on text it did not write. A finding is a
-# warning annotation on the run; it does not fail the check. Flip to enforce
-# once the example addresses are rewritten or marked `leak-guard-allow`.
+# ENFORCING (enforce: true). A finding fails the check, so a leak cannot
+# merge behind a green run. This caller started in warn mode (#25) because
+# the setup docs carried example LAN addresses from the initial import, and
+# a PR editing them would have failed on text it did not write. Before the
+# flip the scanner's own `--tree` sweep was run over every tracked file:
+# single-host examples were rewritten as placeholders, and the lines that
+# are whole private ranges by design (Asterisk `localnet`/`permit`, a Docker
+# subnet) carry `leak-guard-allow` with a reason, leaving the tree clean.
+# A hit that is genuinely fine gets the same per-line marker, never a
+# return to warn mode.
 #
-# Warn mode softens FINDINGS only. A scan that could not run (missing
-# scanner, unresolvable diff, empty diff on a PR with changes) is still a
-# red check.
+# A scan that could not run (missing scanner, unresolvable diff, empty diff
+# on a PR with changes) is a red check too.
 #
 # `edited` is in the trigger list on purpose: a PR body can leak long after
 # the last push.
@@ -46,7 +48,7 @@ jobs:
       id-token: write
     with:
       allowed-repo-refs: infra, infra-public, grug
-      enforce: false
+      enforce: true
       deny-list-ssm-param: /infra/leak-scan/deny-list
     secrets:
       aws-role-arn: ${{ secrets.LEAK_SCAN_ROLE_ARN }}
