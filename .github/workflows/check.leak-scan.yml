@@ -13,10 +13,10 @@ name: check.leak-scan
 # a PR editing them would have failed on text it did not write. Before the
 # flip the scanner's own `--tree` sweep was run over every tracked file:
 # single-host examples were rewritten as placeholders, and the lines that
-# are whole private ranges by design (Asterisk `localnet`/`permit`, a Docker
-# subnet) carry `leak-guard-allow` with a reason, leaving the tree clean.
-# A hit that is genuinely fine gets the same per-line marker, never a
-# return to warn mode.
+# are whole private ranges by design (Asterisk `localnet`/`permit`) carry
+# `leak-guard-allow` with a reason. A line the sweep still flags is old text
+# that the PR touching it rewrites or marks the same way. A hit that is
+# genuinely fine gets the per-line marker, never a return to warn mode.
 #
 # A scan that could not run (missing scanner, unresolvable diff, empty diff
 # on a PR with changes) is a red check too.
