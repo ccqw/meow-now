@@ -55,8 +55,7 @@ stranger from the first word, not just the code.
   the path. "It's already been rotated" is not a reason to leave the old
   value visible; redact it anyway, because the *pattern* (which SSM path,
   which naming convention, which provider) is itself information.
-- A path that reveals a real local username (`/Users/<name>/...`,
-  `C:\Users\<name>\...`) or a real machine's hostname.
+- A path that reveals a real local username, or a real machine's hostname.
 - A quote attributed to a specific named person, even an accurate one.
   Paraphrase instead: "the operator decided..." not "Alice said...".
 - The name of another private repository, service, or internal system

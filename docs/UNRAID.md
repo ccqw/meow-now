@@ -83,7 +83,7 @@ Environment Variables:
 ```bash
 # In Unraid console
 ip addr show br0 | grep inet
-# Example: 192.168.1.100
+# Use the address shown for your Unraid server.
 ```
 
 **Router Port Forwarding:**
@@ -106,7 +106,7 @@ nano /mnt/user/appdata/meow-now/asterisk/config/sip.conf
 externip=YOUR_PUBLIC_IP
 
 ; Your local network
-localnet=192.168.1.0/255.255.255.0
+localnet=YOUR_LAN_NETWORK/YOUR_LAN_NETMASK
 
 [numberbarn]
 ; Your SIP provider credentials
@@ -145,12 +145,12 @@ If you have Ollama running on your Unraid server or network:
 
 **In Unraid Docker settings, add:**
 ```
-OLLAMA_URL = http://192.168.1.100:11434
+OLLAMA_URL = http://YOUR_OLLAMA_HOST:11434
 ```
 
 **Or edit .env:**
 ```bash
-OLLAMA_URL=http://192.168.1.100:11434
+OLLAMA_URL=http://YOUR_OLLAMA_HOST:11434
 ```
 
 #### TTS Engine Selection
@@ -227,7 +227,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: YOUR_DOCKER_SUBNET
 ```
 
 ### GPU Acceleration (Optional)

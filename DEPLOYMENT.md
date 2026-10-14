@@ -183,7 +183,7 @@ externip=YOUR.PUBLIC.IP.ADDRESS
 ; externrefresh=60
 
 ; Local network (adjust to your LAN)
-localnet=192.168.1.0/255.255.255.0
+localnet=YOUR_LAN_NETWORK/YOUR_LAN_NETMASK
 
 ; SIP and RTP ports
 bindport=5060
@@ -236,7 +236,7 @@ You must forward these ports from your router to your server:
 
 **Router Configuration Steps:**
 
-1. Log into your router (usually http://192.168.1.1)
+1. Log into your router using its address from your network settings
 2. Find "Port Forwarding" or "Virtual Server" settings
 3. Add two rules:
    - **SIP**: External 5060 UDP → Internal SERVER_IP:5060 UDP

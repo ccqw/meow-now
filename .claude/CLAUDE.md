@@ -184,7 +184,7 @@ CAT_MONOLOGUE_DURATION=15
 TTS_ENGINE=piper  # or espeak-ng
 
 # Ollama (optional)
-OLLAMA_URL=http://192.168.1.100:11434
+OLLAMA_URL=http://YOUR_OLLAMA_HOST:11434
 
 # Cat Personalities
 ENABLE_GRUMPY_CAT=True
