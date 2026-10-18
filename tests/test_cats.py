@@ -1,5 +1,5 @@
 import json
-from itertools import combinations
+from itertools import combinations, pairwise
 
 import httpx
 import numpy as np
@@ -53,9 +53,29 @@ def test_builtin_monologue_without_ollama():
 
 def test_subtitle_times_increase_and_fit_the_audio():
     result = cats.monologue(cats.CATS["anxious"], seed=1)
-    starts = [s for _, s in result.words]
+    starts = [w.start for w in result.words]
     assert starts == sorted(starts)
     assert starts[-1] < len(result.audio) / SAMPLE_RATE
+
+
+@pytest.mark.parametrize("cat_id", sorted(cats.CATS))
+def test_word_timing_matches_the_rendered_meows(monkeypatch, cat_id):
+    planned = []
+    real = cats.meows.synthesize
+
+    def spy(meow, *args, **kwargs):
+        planned.append(meow)
+        return real(meow, *args, **kwargs)
+
+    monkeypatch.setattr(cats.meows, "synthesize", spy)
+    cat = cats.CATS[cat_id]
+    text = " ".join(cat.lines[:3])
+    _, words = cats.speak(cat, text, seed=3)
+    assert [w.word for w in words] == text.split()
+    assert [(w.duration, w.kind) for w in words] == [(m.duration, m.kind) for m in planned]
+    # Each meow ends before the next word starts, so the jaw never runs into the next word.
+    for word, after in pairwise(words):
+        assert word.start + word.duration < after.start
 
 
 def test_tempo_changes_length():

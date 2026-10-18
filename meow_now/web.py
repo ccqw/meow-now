@@ -71,6 +71,18 @@ async def _read_capped(request: Request, limit: int) -> bytes:
     return bytes(body)
 
 
+def _cat_or_404(cat_id: str, seed: int) -> cats.Cat:
+    """The cat called `cat_id`; `random` picks one from the seed."""
+    try:
+        return cats.get_cat(cat_id, np.random.default_rng(seed))
+    except KeyError:
+        raise HTTPException(404, f"no cat called {cat_id!r}") from None
+
+
+def _cat_json(cat: cats.Cat) -> dict:
+    return {"id": cat.id, "name": cat.name, "tagline": cat.tagline}
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     app = FastAPI(title="meow-now", version=__version__, docs_url="/api/docs", redoc_url=None)
@@ -100,8 +112,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     @app.post("/api/mockery", dependencies=limited)
-    async def mockery(request: Request, seed: int | None = Query(None, ge=0)) -> JSONResponse:
+    async def mockery(
+        request: Request,
+        seed: int | None = Query(None, ge=0),
+        cat: str | None = Query(None, description="a cat id, or random, to mock you in its voice"),
+    ) -> JSONResponse:
         """Body: a PCM WAV recording (Content-Type audio/wav), up to 60 seconds."""
+        seed = secrets.randbelow(1 << 30) if seed is None else seed
+        mocker = _cat_or_404(cat, seed) if cat else None
         body = await _read_capped(request, settings.max_upload_bytes)
         if not body:
             raise HTTPException(400, "send a WAV recording as the request body")
@@ -112,13 +130,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if rate < 8000:
             raise HTTPException(415, f"sample rate {rate} Hz is too low; use 8000 Hz or more")
 
-        seed = secrets.randbelow(1 << 30) if seed is None else seed
         async with renders.slot():
-            result = await run_in_threadpool(mock, samples, rate, seed)
+            result = await run_in_threadpool(mock, samples, rate, seed, mocker)
         return JSONResponse(
             {
                 "audio": _data_url(result.audio),
                 "seed": seed,
+                "cat": _cat_json(mocker) if mocker else None,
                 "input_seconds": round(min(result.analysis.duration, MAX_INPUT_S), 2),
                 "truncated": result.analysis.duration > MAX_INPUT_S,
                 "meows": [
@@ -151,10 +169,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def cat_monologue(cat_id: str, seed: int | None = Query(None, ge=0)) -> JSONResponse:
         """A monologue from one cat; `random` picks one."""
         seed = secrets.randbelow(1 << 30) if seed is None else seed
-        try:
-            cat = cats.get_cat(cat_id, np.random.default_rng(seed))
-        except KeyError:
-            raise HTTPException(404, f"no cat called {cat_id!r}") from None
+        cat = _cat_or_404(cat_id, seed)
         # The Ollama call is network wait, not CPU, so it does not hold a render slot.
         text, source = await run_in_threadpool(
             cats.monologue_text, cat, seed, settings.ollama_url, settings.ollama_model
@@ -163,10 +178,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             result = await run_in_threadpool(cats.render_monologue, cat, text, source, seed)
         return JSONResponse(
             {
-                "cat": {"id": cat.id, "name": cat.name, "tagline": cat.tagline},
+                "cat": _cat_json(cat),
                 "text": result.text,
                 "source": result.source,
-                "words": [{"word": w, "start": s} for w, s in result.words],
+                "words": [
+                    {
+                        "word": w.word,
+                        "start": w.start,
+                        "duration": round(w.duration, 3),
+                        "kind": w.kind,
+                    }
+                    for w in result.words
+                ],
                 "audio": _data_url(result.audio),
             }
         )

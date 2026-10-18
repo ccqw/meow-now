@@ -1131,7 +1131,9 @@ async function sendRecording(arrayBuffer) {
   bubbleThinking();
   try {
     const samples = await toMono16k(arrayBuffer);
-    const data = await postJson("/api/mockery", encodeWav(samples, TARGET_RATE), { "Content-Type": "audio/wav" });
+    // The chosen cat mocks you, in its own voice.
+    const url = "/api/mockery" + (chosen ? "?cat=" + encodeURIComponent(chosen) : "");
+    const data = await postJson(url, encodeWav(samples, TARGET_RATE), { "Content-Type": "audio/wav" });
     const meows = data.meows || [];
     const caption = typeof data.caption === "string" ? data.caption : "";
     const reaction = data.reaction || "none";
@@ -1315,23 +1317,11 @@ async function loadCats() {
   if (data.cats.length) selectCat(data.cats[0].id, false);
 }
 
-// The monologue gives word starts only, so each meow's length is estimated the way the
-// server paces speech: about (0.1 + 0.05 per letter) / tempo seconds, never past the next word.
-function wordEvents(words, total) {
-  const letters = (w) => w.replace(/[^A-Za-z]/g, "").length || 1;
-  const gap = (i) => (i + 1 < words.length ? words[i + 1].start : total - 0.2) - words[i].start;
-  const rates = [];
-  words.forEach((w, i) => {
-    if (i + 1 < words.length && !/[.,;:?!]$/.test(w.word)) rates.push((0.16 + 0.05 * letters(w.word)) / gap(i));
-  });
-  rates.sort((p, q) => p - q);
-  const tempo = rates.length ? clamp(rates[Math.floor(rates.length / 2)], 0.5, 2) : 1;
-  return words.map((w, i) => {
-    let dur = w.duration || clamp((0.1 + 0.05 * letters(w.word)) / tempo, 0.1, 0.8);
-    dur = Math.max(0.08, Math.min(dur, gap(i) - 0.03));
-    const kind = w.kind || (dur < 0.18 ? "mew" : dur > 0.75 ? "yowl" : "meow");
+// Each word carries the exact length and kind of the meow the server rendered for it.
+function wordEvents(words) {
+  return words.map((w) => {
     const loud = /!$/.test(w.word);
-    return { start: w.start, dur, kind, gape: loud ? 1 : 0.8, rise: /\?$/.test(w.word), loud };
+    return { start: w.start, dur: w.duration, kind: w.kind, gape: loud ? 1 : 0.8, rise: /\?$/.test(w.word), loud };
   });
 }
 
@@ -1346,7 +1336,7 @@ async function talk(catId) {
     const words = data.words;
     const last = words[words.length - 1];
     const total = last ? last.start + 1 : 1;
-    const events = wordEvents(words, total);
+    const events = wordEvents(words);
     const wordEls = bubbleWords("monologue", data.cat.name, words.map((w) => w.word));
     wordRibbon(events, total);
     setStatus(catStatus, data.source === "ollama" ? "Freshly improvised." : "");

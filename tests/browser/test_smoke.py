@@ -138,6 +138,23 @@ def test_record_then_stop_shows_mockery(home: Page):
     expect(home.locator("#subtitle .w")).to_have_count(meows)
 
 
+def test_mockery_is_sent_in_the_chosen_cats_voice(home: Page):
+    third = home.locator("#cats button.cat").nth(2)
+    cat_id = third.get_attribute("data-id")
+    third.click()
+    expect(third).to_have_attribute("aria-pressed", "true")
+    rec = home.locator("#rec")
+    rec.click()
+    expect(rec).to_have_text("Done")
+    home.wait_for_timeout(1500)
+    with home.expect_response(re.compile(r"/api/mockery")) as info:
+        rec.click()
+    response = info.value
+    assert f"cat={cat_id}" in response.url
+    assert response.json()["cat"]["id"] == cat_id
+    expect(home.locator("#mock-status")).to_have_text(re.compile(r"meows? for"), timeout=15000)
+
+
 def test_silent_recording_shows_the_caption(home: Page):
     # The fake microphone always beeps, so swap the upload for a second of silence.
     silence = encode_wav(np.zeros(16_000, dtype=np.float32), 16_000)

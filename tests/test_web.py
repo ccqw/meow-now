@@ -103,6 +103,29 @@ def test_mockery_meows_carry_contour_and_loudness(client):
     assert max(m["loudness"] for m in data["meows"]) == 1.0
 
 
+def test_mockery_in_a_cats_voice(client):
+    wav = encode_wav(speech_like([120, 160, 200]), RATE)
+    plain = client.post("/api/mockery?seed=3", content=wav).json()
+    assert plain["cat"] is None
+    grumpy = client.post("/api/mockery?seed=3&cat=grumpy", content=wav).json()
+    assert grumpy["cat"]["id"] == "grumpy"
+    assert grumpy == client.post("/api/mockery?seed=3&cat=grumpy", content=wav).json()
+    assert grumpy["audio"] != plain["audio"]
+    anxious = client.post("/api/mockery?seed=3&cat=anxious", content=wav).json()
+    # Same recording, same seed: each meow pitched around its own cat's voice.
+    for low, high in zip(grumpy["meows"], anxious["meows"], strict=True):
+        assert low["pitch_hz"] < 0.7 * high["pitch_hz"]
+    picked = client.post("/api/mockery?seed=3&cat=random", content=wav).json()
+    assert picked["cat"]["id"] in ("grumpy", "wise", "anxious", "diva")
+
+
+def test_mockery_unknown_cat_is_404(client):
+    wav = encode_wav(speech_like([120, 160]), RATE)
+    resp = client.post("/api/mockery?cat=dog", content=wav)
+    assert resp.status_code == 404
+    assert "dog" in resp.json()["detail"]
+
+
 def test_mockery_rejects_negative_seed(client):
     wav = encode_wav(speech_like([150]), RATE)
     assert client.post("/api/mockery?seed=-1", content=wav).status_code == 422
@@ -157,6 +180,9 @@ def test_monologue(client):
     assert data["cat"]["id"] == "grumpy"
     assert data["source"] == "builtin"
     assert [w["word"] for w in data["words"]] == data["text"].split()
+    for w in data["words"]:
+        assert 0 < w["duration"] <= 0.8
+        assert w["kind"] in ("mew", "meow", "mrrp", "yowl", "purr")
     _decode_data_url(data["audio"])
 
 

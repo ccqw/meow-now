@@ -147,8 +147,8 @@ Interactive docs are served at `/api/docs`.
 |---|---|---|
 | `GET /healthz` | | `{"status": "ok", "version": ...}` |
 | `GET /api/cats` | | The cats, and whether Ollama is configured |
-| `POST /api/mockery` | A PCM WAV file as the raw body (`Content-Type: audio/wav`), at least 8 kHz, any channels; only the first 60 s are used. Optional `?seed=` (0 or more) makes the result reproducible | `{"audio": "data:audio/wav;base64,...", "seed", "input_seconds", "truncated", "meows": [{start, duration, pitch_hz, your_pitch_hz, kind, contour, loudness}]}`. `contour` is the syllable's pitch over its median pitch through time (empty when unvoiced); `loudness` is 0 to 1, relative to the loudest syllable. Also `"reaction"`: `none`, `silent`, `question` or `bored`; `"caption"`: a short line about the reaction for display, or `null` for `none`; and `"reaction_meows": [{start, duration, pitch_hz, kind}]`, the extra meows the reaction added (not tied to a syllable). A silent recording is not an error: it returns 200 with `reaction: "silent"` and no `meows` |
-| `POST /api/cats/{id}/monologue` | `id` is `grumpy`, `wise`, `anxious`, `diva` or `random`; optional `?seed=` | `{"cat", "text", "source": "ollama" or "builtin", "words": [{word, start}], "audio"}` |
+| `POST /api/mockery` | A PCM WAV file as the raw body (`Content-Type: audio/wav`), at least 8 kHz, any channels; only the first 60 s are used. Optional `?seed=` (0 or more) makes the result reproducible. Optional `?cat=` (a cat id or `random`) mocks you in that cat's voice, centred on its pitch; an unknown id is 404 | `{"audio": "data:audio/wav;base64,...", "seed", "cat": {id, name, tagline} or null, "input_seconds", "truncated", "meows": [{start, duration, pitch_hz, your_pitch_hz, kind, contour, loudness}]}`. `contour` is the syllable's pitch over its median pitch through time (empty when unvoiced); `loudness` is 0 to 1, relative to the loudest syllable. Also `"reaction"`: `none`, `silent`, `question` or `bored`; `"caption"`: a short line about the reaction for display, or `null` for `none`; and `"reaction_meows": [{start, duration, pitch_hz, kind}]`, the extra meows the reaction added (not tied to a syllable). A silent recording is not an error: it returns 200 with `reaction: "silent"` and no `meows` |
+| `POST /api/cats/{id}/monologue` | `id` is `grumpy`, `wise`, `anxious`, `diva` or `random`; optional `?seed=` | `{"cat", "text", "source": "ollama" or "builtin", "words": [{word, start, duration, kind}], "audio"}`. Each word's `start` and `duration` are in seconds and `kind` is the meow kind rendered for it |
 | `GET /api/meow` | `pitch` (200 to 1500 Hz), `duration` (0.08 to 2 s), `kind` (`mew`, `meow`, `mrrp`, `yowl` or `purr`), `seed`. For a purr, `pitch` sets the pulse rate within 20 to 30 Hz (600 gives 25 Hz) | One meow (or purr) as `audio/wav` |
 
 Examples:
@@ -232,8 +232,9 @@ commands on Python 3.11, 3.12 and 3.13.
 
 `tests/browser` drives the real page in headless Chromium against a live local
 server, with a fake microphone: it checks that the cats load, that recording
-and stopping returns a mockery with audio and bars, that a silent recording
-shows the cat's caption, and that a monologue plays with subtitles, all
+and stopping returns a mockery with audio and bars in the chosen cat's voice,
+that a silent recording shows the cat's caption, and that a monologue plays
+with subtitles, all
 without a single Content Security Policy violation (and that the policy
 really blocks an inline script without the nonce). It needs Playwright and a
 browser, so plain `pytest` skips it.
