@@ -6,7 +6,9 @@ Meow Now is a small, self-hosted web app with two experiences:
 
 1. **Meow Mockery.** Talk for up to 60 seconds. A cat repeats it back to you:
    one meow for each syllable, in time with you, rising where your voice rose
-   and falling where it fell. No words survive.
+   and falling where it fell. No words survive. It also reacts: say nothing
+   and it waits you out, then asks; end on a question and it answers with a
+   flat "meh"; talk past about 40 seconds and it loses interest, then yawns.
 2. **Talkative Cats.** Four cats with opinions (grumpy, wise, anxious and a
    diva) each deliver a short monologue, entirely in meows, with English
    subtitles that light up word by word. Point it at a local
@@ -97,6 +99,13 @@ MediaRecorder (webm/opus, mp4, ...)
 - **Mapping to cat.** Your median pitch lands at 650 Hz, and each syllable
   keeps (and slightly exaggerates) how far above or below your median it was,
   clamped to 350 to 1200 Hz. Questions still go up.
+- **Reactions.** A recording with no syllables comes back as its own silence
+  plus one small rising `mrrp` (`silent`). If you talk past 40 s, syllables
+  after that get shorter and quieter over the next 20 s, and the result ends
+  in one long falling yawn (`bored`). Otherwise, if the last syllable lasts at
+  least 0.15 s and its contour ends at least 12% above its first half, the cat
+  mirrors the question, pauses 0.6 s and adds one flat, falling meow
+  (`question`). Only one reaction applies, in that order of priority.
 - **Meows** are additive synthesis: a stack of harmonics on a rising and falling
   pitch track, each harmonic weighted by its distance to formants that glide
   through "m-ee-aa-oo", under an envelope that opens from a nasal "m". There
@@ -114,7 +123,7 @@ Interactive docs are served at `/api/docs`.
 |---|---|---|
 | `GET /healthz` | | `{"status": "ok", "version": ...}` |
 | `GET /api/cats` | | The cats, and whether Ollama is configured |
-| `POST /api/mockery` | A PCM WAV file as the raw body (`Content-Type: audio/wav`), at least 8 kHz, any channels; only the first 60 s are used. Optional `?seed=` (0 or more) makes the result reproducible | `{"audio": "data:audio/wav;base64,...", "seed", "input_seconds", "truncated", "meows": [{start, duration, pitch_hz, your_pitch_hz, kind, contour, loudness}]}`. `contour` is the syllable's pitch over its median pitch through time (empty when unvoiced); `loudness` is 0 to 1, relative to the loudest syllable |
+| `POST /api/mockery` | A PCM WAV file as the raw body (`Content-Type: audio/wav`), at least 8 kHz, any channels; only the first 60 s are used. Optional `?seed=` (0 or more) makes the result reproducible | `{"audio": "data:audio/wav;base64,...", "seed", "input_seconds", "truncated", "meows": [{start, duration, pitch_hz, your_pitch_hz, kind, contour, loudness}]}`. `contour` is the syllable's pitch over its median pitch through time (empty when unvoiced); `loudness` is 0 to 1, relative to the loudest syllable. Also `"reaction"`: `none`, `silent`, `question` or `bored`; `"caption"`: a short line about the reaction for display, or `null` for `none`; and `"reaction_meows": [{start, duration, pitch_hz, kind}]`, the extra meows the reaction added (not tied to a syllable). A silent recording is not an error: it returns 200 with `reaction: "silent"` and no `meows` |
 | `POST /api/cats/{id}/monologue` | `id` is `grumpy`, `wise`, `anxious`, `diva` or `random`; optional `?seed=` | `{"cat", "text", "source": "ollama" or "builtin", "words": [{word, start}], "audio"}` |
 | `GET /api/meow` | `pitch` (200 to 1500 Hz), `duration` (0.08 to 2 s), `kind`, `seed` | One meow as `audio/wav` |
 
@@ -181,8 +190,8 @@ commands on Python 3.11, 3.12 and 3.13.
 
 `tests/browser` drives the real page in headless Chromium against a live local
 server, with a fake microphone: it checks that the cats load, that recording
-and stopping returns a mockery with audio and bars, and that a monologue plays
-with subtitles. It needs Playwright and a browser, so plain `pytest` skips it.
+and stopping returns a mockery with audio and bars, that a silent recording
+shows the cat's caption, and that a monologue plays with subtitles. It needs Playwright and a browser, so plain `pytest` skips it.
 To run it:
 
 ```sh

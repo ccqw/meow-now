@@ -103,6 +103,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     }
                     for s, m in zip(result.analysis.syllables, result.meows, strict=True)
                 ],
+                "reaction": result.reaction,
+                "caption": result.caption,
+                "reaction_meows": [
+                    {
+                        "start": round(start, 3),
+                        "duration": round(m.duration, 3),
+                        "pitch_hz": round(m.pitch, 1),
+                        "kind": m.kind,
+                    }
+                    for start, m in result.extras
+                ],
             }
         )
 

@@ -203,13 +203,11 @@ async function sendRecording(arrayBuffer) {
   try {
     const samples = await toMono16k(arrayBuffer);
     const data = await postJson("/api/mockery", encodeWav(samples, TARGET_RATE), { "Content-Type": "audio/wav" });
-    if (!data.meows.length) {
-      setStatus(mockStatus, "The cat heard nothing to mock. Try talking a little louder.");
-      return;
-    }
     const s = data.input_seconds.toFixed(1);
-    setStatus(mockStatus, data.meows.length + " meows for " + s + " seconds of you." +
-      (data.truncated ? " (Only the first 60 seconds.)" : ""));
+    const counted = data.meows.length + " meows for " + s + " seconds of you." +
+      (data.truncated ? " (Only the first 60 seconds.)" : "");
+    // The silent reaction has nothing to count, so its caption stands alone.
+    setStatus(mockStatus, data.meows.length ? [counted, data.caption].filter(Boolean).join(" ") : data.caption);
     drawBars(data.meows, data.input_seconds);
     mockAudio.src = data.audio;
     mockAudio.hidden = false;

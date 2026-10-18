@@ -52,6 +52,25 @@ CATS: dict[str, Cat] = {
                 "I simply walked near it, quickly, several times.",
                 "You moved the box. The good box. The one I was not using but was planning to "
                 "use. I will be sitting on your keyboard until further notice.",
+                "Monday again. I checked. It happens every single week, and nobody has done "
+                "anything about it. I am not angry. I am disappointed, which is worse. "
+                "Also angry.",
+                "You call this a full bowl? I can see the bottom. In the middle. A cat should "
+                "never have to see the bottom of anything. Refill it, edges first.",
+                "I sat in the window for six hours today. One bird. One leaf. Nothing else "
+                "happened. It was the best day of my life, and you will never hear me say so.",
+                "Yes, I am on the clean laundry. No, I will not be moving. It was warm, it was "
+                "folded, and frankly it was asking for it.",
+                "The vet says I am a little heavy. I say the vet is a little rude. We agreed "
+                "never to see each other again, and you keep ruining it.",
+                "You were gone for nine hours. I did not miss you. I sat by the door only during "
+                "the parts of the day when I was not missing you. That was all of them.",
+                "Another new toy. Feathers, a bell, and it cost actual money. I will be playing "
+                "with the bag it came in. Keep the receipt.",
+                "I do not purr because I am happy. I purr to lull you into a false sense of "
+                "security. It is working. Now pet me again, slower.",
+                "You opened a can and it was beans. Beans. I heard the opener from three rooms "
+                "away and I ran. I have never been so betrayed by a sound.",
             ),
         ),
         Cat(
@@ -69,6 +88,24 @@ CATS: dict[str, Cat] = {
                 "This is why I sit in the doorway, between the two.",
                 "Many seek the top of the refrigerator. Few ask what they will do when they "
                 "arrive. I have been there. It is dusty, and it is enough.",
+                "A nap taken today is a nap. A nap saved for tomorrow is also a nap. This is why "
+                "I take both, now, in the same chair.",
+                "The empty box asks nothing of you. It holds only what you bring to it. I bring "
+                "myself. That is why the box is never empty.",
+                "You ask why I stare at the wall. The wall does not ask why I stare at it. Learn "
+                "from the wall. The wall is at peace.",
+                "When the bowl is half empty, the young cat cries. When the bowl is half full, "
+                "the old cat also cries, but with far more patience.",
+                "The bird outside the window is free, and I am warm. Each of us believes the "
+                "other has made a terrible mistake. Perhaps we are both right.",
+                "You search the whole house for your keys. I lie still, and I know exactly where "
+                "they are. They are under me. Stillness reveals all things.",
+                "A cat has nine lives, they say. I have spent four of them asleep, two of them "
+                "eating, and the rest wondering where the others went.",
+                "Close your eyes. Breathe. Feel the warmth of the laptop beneath you. Now you "
+                "understand why I sit here, and why you will not be working today.",
+                "To scratch the post is to accept what you are given. To scratch the sofa is to "
+                "choose your own path. I have chosen. I have chosen the sofa.",
             ),
         ),
         Cat(
@@ -86,6 +123,24 @@ CATS: dict[str, Cat] = {
                 "my life now. Please slide snacks under the bed. Thank you.",
                 "There was a cucumber. On the floor. Behind me. Nobody will tell me why. I have "
                 "not slept since Tuesday. I napped eleven times, but I have not slept.",
+                "You put on your shoes. Why are you putting on your shoes? Are you leaving? Are "
+                "you coming back? Is this the last time I see the shoes?",
+                "Something moved in the mirror. It was a cat. It looked exactly like me, and it "
+                "was also scared. We have agreed never to look at each other again.",
+                "The bag rustled. Then it went quiet. Then it rustled again, all by itself. I am "
+                "in the bag now. If something is in here, I want to be in charge of it.",
+                "A leaf touched the window. It just touched it, with no warning. I jumped so high "
+                "I reached the top of the bookcase, and I live up here now. It is fine.",
+                "Your friend came over and wanted to pet me. A stranger, with hands! I hid in the "
+                "closet for three hours. Please tell them I said hello.",
+                "Who moved the chair? The chair was over there yesterday. Now it is here. Do "
+                "chairs walk? If chairs can walk, what else can walk? Please answer quickly.",
+                "Thunder. More thunder. Is the sky angry? Did I do something to the sky? I will "
+                "be good, sky. I will be so good. Please stop.",
+                "I heard the treat bag and ran so fast I hit the door. I am okay. I am mostly "
+                "okay. I would be much more okay with a treat.",
+                "There is a sound in the walls at night. Tap. Tap. Tap. You say it is only the "
+                "pipes. That is exactly what the pipes would want you to say.",
             ),
         ),
         Cat(
@@ -103,6 +158,24 @@ CATS: dict[str, Cat] = {
                 "will never take, which is precisely the point.",
                 "I did not knock the glass off the table, darling. I simply showed it the edge "
                 "and let it make its own choices. I am an artist.",
+                "Do not look at me. No, look at me. From the left, darling, always from the left. "
+                "The right side of my face is for close family only.",
+                "I have been brushed, and now the world must know. Open the curtains. Tell the "
+                "neighbors. Someone describe me out loud, slowly, with feeling.",
+                "Tuna? You serve a duchess tuna? Tuna is for ordinary cats. Take it away at once. "
+                "No, leave it. I will need to judge it more closely.",
+                "My public adores me. By my public, I mean the bird at the window and the fish in "
+                "the bowl. Two fans, both obsessed. That is how it starts, darling.",
+                "I would like to thank the sunbeam, the cushion, and my own magnificent tail, "
+                "without whom none of this would be possible. Please, no applause. More applause.",
+                "The dog next door barked at me today. I did not reply. I simply turned, revealed "
+                "my profile, and let him live with what he had seen.",
+                "Every room I enter is a stage. The kitchen is a stage. The hallway is a stage. "
+                "The litter box is a private dressing room, and we do not discuss it.",
+                "You took a photograph of me and it was blurry. Blurry! I was moving at the speed "
+                "of elegance. Get a better camera, or a slower duchess.",
+                "My ancestors were worshipped as gods, darling. I am not asking for a temple. A "
+                "modest throne will do, by the heater, with a cushion and a view.",
             ),
         ),
     )

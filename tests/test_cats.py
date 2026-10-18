@@ -15,6 +15,23 @@ def test_four_cats_each_with_lines():
             line.encode("ascii")
 
 
+@pytest.mark.parametrize("cat_id", sorted(cats.CATS))
+def test_every_cat_has_plenty_to_say(cat_id):
+    lines = cats.CATS[cat_id].lines
+    assert len(lines) >= 12
+    assert len(set(lines)) == len(lines)
+    for line in lines:
+        assert 20 <= len(line.split()) <= cats.MAX_WORDS, line
+        assert "  " not in line and line == line.strip()
+
+
+def test_builtin_monologues_rotate_through_every_line(monkeypatch):
+    monkeypatch.setattr(cats, "speak", lambda cat, text, seed=0: (np.zeros(1), ()))
+    for cat in cats.CATS.values():
+        heard = {cats.monologue(cat, seed=seed).text for seed in range(len(cat.lines))}
+        assert heard == set(cat.lines)
+
+
 def test_get_cat(rng):
     assert cats.get_cat("wise", rng).id == "wise"
     assert cats.get_cat("random", rng).id in cats.CATS
