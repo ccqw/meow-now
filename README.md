@@ -154,22 +154,17 @@ Terminate TLS at your ingress so the microphone works.
 ### Container images
 
 [`.github/workflows/publish-image.yml`](.github/workflows/publish-image.yml)
-builds the image on every pull request (on a GitHub-hosted runner, build and
-smoke test only) and pushes it on `main` and on `v*.*.*` tags as
-`<registry>/meow-now:sha-<commit>`, plus `:main` or the version tag. Pin the
-`sha-<commit>@<digest>` from the run summary in your manifests.
+builds `linux/amd64` and `linux/arm64` images, each on its own native
+GitHub-hosted runner (no emulation). On a pull request it builds both without
+pushing and smoke-tests the image. On `main` it pushes
+`ghcr.io/<owner>/<repo>:sha-<commit>`, and on a `v*.*.*` tag it pushes
+`ghcr.io/<owner>/<repo>:<version>`. The run summary prints the full
+`image:tag@digest` to pin in your manifests.
 
-Where it pushes is set with repository variables, so a fork needs no edits:
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `IMAGE_REGISTRY` | `ghcr.io/<owner>` | Registry and namespace to push to |
-| `IMAGE_RUNNER` | `ubuntu-latest` | Runner for push builds. The image is built for this runner's architecture, so use an arm64 runner for an arm64 cluster |
-| `IMAGE_AUTH_FILE` | unset | Path on a self-hosted runner to a docker `config.json` with push credentials. Without it, GHCR is logged in to with `GITHUB_TOKEN` |
-
-This repository's own pushes run on a self-hosted runner and go to a private
-registry; that is configured entirely through those variables, and nothing in
-the repository depends on it.
+It logs in to GHCR with the workflow's own `GITHUB_TOKEN`, so a fork
+publishes to its own GHCR with no secrets to set up. New GHCR packages start
+private: to pull without credentials, set the package to public once in its
+GitHub package settings.
 
 ## Development
 
