@@ -142,9 +142,9 @@ def kind_for(duration: float, rng: np.random.Generator, preferred: tuple[str, ..
     usable = [k for k in preferred if duration >= MIN_KIND_S[k]]
     if usable and rng.random() < PREFERRED_KIND_CHANCE:
         return usable[int(rng.integers(len(usable)))]
-    if duration < 0.18:
+    if duration < MIN_KIND_S["meow"]:
         return "mew"
-    if duration > 0.75:
+    if duration > 0.75:  # long enough that a plain meow would drag
         return "yowl"
     return "mrrp" if rng.random() < 0.15 else "meow"
 
