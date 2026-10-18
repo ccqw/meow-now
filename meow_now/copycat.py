@@ -317,54 +317,44 @@ def _align(
     return _dp(onsets, units, count, a, b)
 
 
-def _dp(
+def _cell(
+    cost: list[list[np.ndarray]],
+    i: int,
+    j: int,
     onsets: np.ndarray,
     units: dict[tuple[int, int], _Unit],
-    count: int,
     a: np.ndarray,
     b: np.ndarray,
-) -> tuple[float, float, float, dict[int, tuple[int, int]]]:
-    """Align at each candidate tempo a[c] and offset b[c] (syllable time = a * cat time + b)."""
-    n, c = len(onsets), len(a)
-    inf = np.full(c, np.inf)
-    cost = [[inf.copy() for _ in range(count + 1)] for _ in range(n + 1)]
-    back: list[list[np.ndarray | None]] = [[None] * (count + 1) for _ in range(n + 1)]
-    # back[i][j] holds, per candidate, how (i, j) was reached: -1 a miss, -2 an extra,
-    # or k >= 0, meow i - 1 matched to syllables [k, j).
-    cost[0][0] = np.zeros(c)
-    limit = MISS_COST + EXTRA_COST  # a match dearer than a miss plus an extra is never taken
-    for i in range(n + 1):
-        for j in range(count + 1):
-            if i == 0 and j == 0:
-                continue
-            best = inf.copy()
-            how = np.zeros(c, dtype=np.int64)
-            if i > 0:
-                best = cost[i - 1][j] + MISS_COST
-                how[:] = -1
-            if j > 0:
-                extra = cost[i][j - 1] + EXTRA_COST
-                take = extra < best
-                best = np.where(take, extra, best)
-                how = np.where(take, -2, how)
-            if i > 0:
-                for k in range(max(0, j - MAX_PIECES), j):
-                    unit = units.get((k, j))
-                    if unit is None:
-                        continue
-                    late = (unit.start - b) / a - onsets[i - 1]
-                    step = np.minimum((late / ALIGN_SIGMA_S) ** 2 / 2.0, limit)
-                    match = cost[i - 1][k] + step
-                    take = match < best
-                    best = np.where(take, match, best)
-                    how = np.where(take, k, how)
-            cost[i][j] = best
-            back[i][j] = how
+) -> tuple[np.ndarray, np.ndarray]:
+    """The cheapest way, per candidate, to align i meows with j syllables, and how it was done.
 
-    total = cost[n][count]
-    # Cheapest first; among equals, the tempo nearest the cat's, then the earliest offset.
-    order = np.lexsort((b, np.abs(np.log(a)), np.round(total, 9)))
-    pick = int(order[0])
+    How is -1 for a missed meow, -2 for an extra syllable, or k >= 0 for meow
+    i - 1 matched to syllables [k, j).
+    """
+    best = np.full(len(a), np.inf)
+    how = np.zeros(len(a), dtype=np.int64)
+
+    def offer(candidate: np.ndarray, label: int) -> None:
+        nonlocal best, how
+        take = candidate < best
+        best = np.where(take, candidate, best)
+        how = np.where(take, label, how)
+
+    if i > 0:
+        offer(cost[i - 1][j] + MISS_COST, -1)
+    if j > 0:
+        offer(cost[i][j - 1] + EXTRA_COST, -2)
+    limit = MISS_COST + EXTRA_COST  # a match dearer than a miss plus an extra is never taken
+    for k in range(max(0, j - MAX_PIECES), j) if i > 0 else ():
+        unit = units.get((k, j))
+        if unit is not None:
+            late = (unit.start - b) / a - onsets[i - 1]
+            offer(cost[i - 1][k] + np.minimum((late / ALIGN_SIGMA_S) ** 2 / 2.0, limit), k)
+    return best, how
+
+
+def _traceback(back: list[list[np.ndarray]], n: int, count: int, pick: int) -> dict:
+    """Follow candidate `pick` back from (n, count): which syllable run each meow matched."""
     matches: dict[int, tuple[int, int]] = {}
     i, j = n, count
     while i > 0 or j > 0:
@@ -376,7 +366,28 @@ def _dp(
         else:
             matches[i - 1] = (how, j)
             i, j = i - 1, how
-    return float(total[pick]), float(a[pick]), float(b[pick]), matches
+    return matches
+
+
+def _dp(
+    onsets: np.ndarray,
+    units: dict[tuple[int, int], _Unit],
+    count: int,
+    a: np.ndarray,
+    b: np.ndarray,
+) -> tuple[float, float, float, dict[int, tuple[int, int]]]:
+    """Align at each candidate tempo a[c] and offset b[c] (syllable time = a * cat time + b)."""
+    n = len(onsets)
+    cost = [[np.zeros(len(a))] * (count + 1) for _ in range(n + 1)]
+    back = [[np.zeros(len(a), dtype=np.int64)] * (count + 1) for _ in range(n + 1)]
+    for i in range(n + 1):
+        for j in range(count + 1):
+            if i or j:
+                cost[i][j], back[i][j] = _cell(cost, i, j, onsets, units, a, b)
+    total = cost[n][count]
+    # Cheapest first; among equals, the tempo nearest the cat's, then the earliest offset.
+    pick = int(np.lexsort((b, np.abs(np.log(a)), np.round(total, 9)))[0])
+    return float(total[pick]), float(a[pick]), float(b[pick]), _traceback(back, n, count, pick)
 
 
 def _refit(
@@ -396,6 +407,54 @@ def _refit(
     y = np.array([units[run].start for run in matches.values()])
     slope = float(np.clip(np.polyfit(x, y, 1)[0], 1 / TEMPO_RANGE, TEMPO_RANGE))
     return slope, float(np.mean(y - slope * x))
+
+
+def _judge(
+    m: meows.Meow,
+    unit: _Unit,
+    onset: float,
+    fit: tuple[float, float],
+    diff: float | None,
+    transpose: float,
+) -> MeowScore:
+    """Mark one matched meow and name its worst problem.
+
+    `fit` is the (tempo, offset) of the timing fit, and `diff` the semitones from
+    the meow's target pitch to what was heard, None if nothing was heard in tune.
+    """
+    tempo, offset = fit
+    late = (unit.start - offset) / tempo - onset
+    heard = {
+        "heard_start": round((unit.start - offset) / tempo, 3),
+        "heard_duration": round(unit.duration / tempo, 3),
+    }
+    if diff is None:
+        # Whispered, or too rough to track: on time, maybe, but no tune to judge.
+        return MeowScore("unvoiced", 0.0, onset_error=late, **heard)
+    pitch_error = _octave_forgive(diff - transpose)
+    shape_error = _shape_error(unit.contour, target_contour(m))
+    marks = {
+        "timing": np.exp(-0.5 * (late / TIME_SIGMA_S) ** 2),
+        "pitch": np.exp(-0.5 * (pitch_error / PITCH_SIGMA_ST) ** 2),
+        "shape": np.exp(-0.5 * (shape_error / SHAPE_SIGMA_ST) ** 2),
+    }
+    mark = float(np.prod([marks[k] ** w for k, w in WEIGHTS.items()]))
+    # Name the worst problem, each measured against its own tolerance.
+    worst, verdict = max(
+        (abs(pitch_error) / PITCH_TOL_ST, "higher" if pitch_error > 0 else "lower"),
+        (abs(late) / TIME_TOL_S, "late" if late > 0 else "early"),
+        (shape_error / SHAPE_TOL_ST, "shape"),
+    )
+    return MeowScore(
+        verdict if worst > 1.0 else "good",
+        mark,
+        onset_error=late,
+        pitch_error=pitch_error,
+        shape_error=shape_error,
+        heard_pitch=round(target_pitch(m) * 2 ** (pitch_error / 12), 1),
+        heard_contour=unit.contour,
+        **heard,
+    )
 
 
 def score(p: Phrase, samples: np.ndarray, rate: int) -> Score:
@@ -426,49 +485,12 @@ def score(p: Phrase, samples: np.ndarray, rate: int) -> Score:
     }
     transpose = float(np.median(list(diffs.values()))) if diffs else 0.0
 
-    results = []
-    for i, m in enumerate(p.meows):
-        run = matches.get(i)
-        if run is None:
-            results.append(MeowScore("missed", 0.0))
-            continue
-        unit = units[run]
-        late = (unit.start - offset) / tempo - onsets[i]
-        t_mark = float(np.exp(-0.5 * (late / TIME_SIGMA_S) ** 2))
-        heard = {
-            "heard_start": round((unit.start - offset) / tempo, 3),
-            "heard_duration": round(unit.duration / tempo, 3),
-        }
-        if i not in diffs:
-            # Whispered, or too rough to track: on time, maybe, but no tune to judge.
-            results.append(MeowScore("unvoiced", 0.0, onset_error=late, **heard))
-            continue
-        pitch_error = _octave_forgive(diffs[i] - transpose)
-        shape_error = _shape_error(unit.contour, target_contour(m))
-        p_mark = float(np.exp(-0.5 * (pitch_error / PITCH_SIGMA_ST) ** 2))
-        s_mark = float(np.exp(-0.5 * (shape_error / SHAPE_SIGMA_ST) ** 2))
-        mark = t_mark ** WEIGHTS["timing"] * p_mark ** WEIGHTS["pitch"] * s_mark ** WEIGHTS["shape"]
-        # Name the worst problem, each measured against its own tolerance.
-        problems = [
-            (abs(pitch_error) / PITCH_TOL_ST, "higher" if pitch_error > 0 else "lower"),
-            (abs(late) / TIME_TOL_S, "late" if late > 0 else "early"),
-            (shape_error / SHAPE_TOL_ST, "shape"),
-        ]
-        worst, verdict = max(problems)
-        if worst <= 1.0:
-            verdict = "good"
-        results.append(
-            MeowScore(
-                verdict,
-                mark,
-                onset_error=late,
-                pitch_error=pitch_error,
-                shape_error=shape_error,
-                heard_pitch=round(targets[i] * 2 ** (pitch_error / 12), 1),
-                heard_contour=unit.contour,
-                **heard,
-            )
-        )
+    results = [
+        _judge(m, units[matches[i]], onsets[i], (tempo, offset), diffs.get(i), transpose)
+        if i in matches
+        else MeowScore("missed", 0.0)
+        for i, m in enumerate(p.meows)
+    ]
 
     total = sum(r.score for r in results) / n
     total *= max(0.0, 1.0 - EXTRA_PENALTY * extra / n)
