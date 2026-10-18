@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import httpx
 import numpy as np
@@ -37,6 +38,17 @@ class Voice:
         unknown = set(self.kinds) - set(meows.KINDS)
         if unknown:
             raise ValueError(f"unknown meow kinds: {sorted(unknown)}")
+
+    def meow(self, **fields) -> meows.Meow:
+        """A Meow in this voice; `fields` sets the rest (pitch, duration, kind, ...)."""
+        return meows.Meow(
+            formant_scale=self.formant_scale,
+            breathiness=self.breathiness,
+            roughness=self.roughness,
+            vibrato_rate=self.vibrato_rate,
+            vibrato_depth=self.vibrato_depth,
+            **fields,
+        )
 
 
 @dataclass(frozen=True)
@@ -236,13 +248,22 @@ CATS: dict[str, Cat] = {
 }
 
 
+class Word(NamedTuple):
+    """One spoken word and the meow that says it, for subtitles and the cat's jaw."""
+
+    word: str
+    start: float  # seconds
+    duration: float  # seconds of the meow
+    kind: str  # the meow kind rendered
+
+
 @dataclass(frozen=True)
 class Monologue:
     cat: Cat
     text: str
     source: str  # "ollama" or "builtin"
     audio: np.ndarray
-    words: tuple[tuple[str, float], ...]  # (word, start seconds), for subtitles
+    words: tuple[Word, ...]
 
 
 def get_cat(cat_id: str | None, rng: np.random.Generator) -> Cat:
@@ -291,11 +312,11 @@ def ask_ollama(cat: Cat, url: str, model: str, timeout: float = 20.0) -> str | N
     return text
 
 
-def speak(cat: Cat, text: str, seed: int = 0) -> tuple[np.ndarray, tuple[tuple[str, float], ...]]:
+def speak(cat: Cat, text: str, seed: int = 0) -> tuple[np.ndarray, tuple[Word, ...]]:
     """Turn text into cat speech: one meow per word, paced like a sentence, in the cat's voice."""
     rng = np.random.default_rng(seed)
     clips: list[tuple[float, np.ndarray]] = []
-    timing: list[tuple[str, float]] = []
+    timing: list[Word] = []
     t = 0.25
     words = text.split()
     for i, word in enumerate(words):
@@ -310,21 +331,15 @@ def speak(cat: Cat, text: str, seed: int = 0) -> tuple[np.ndarray, tuple[tuple[s
             loud, pitch = 1.0, pitch * 1.15
         elif word.endswith((".", "...")):
             contour = (1.05, 1.0, 0.95, 0.85, 0.75)  # statements land
-        voice = cat.voice
-        meow = meows.Meow(
+        meow = cat.voice.meow(
             pitch=float(np.clip(pitch, 300, 1300)),
             duration=duration,
             loudness=loud,
-            kind=meows.kind_for(duration, rng, voice.kinds),
+            kind=meows.kind_for(duration, rng, cat.voice.kinds),
             contour=contour,
-            formant_scale=voice.formant_scale,
-            breathiness=voice.breathiness,
-            roughness=voice.roughness,
-            vibrato_rate=voice.vibrato_rate,
-            vibrato_depth=voice.vibrato_depth,
         )
         clips.append((t, meows.synthesize(meow, SAMPLE_RATE, seed=seed * 1000 + i)))
-        timing.append((word, round(t, 3)))
+        timing.append(Word(word, round(t, 3), duration, meow.kind))
         t += duration + 0.06 / cat.tempo
         if word.endswith((".", "?", "!", "...")):
             t += 0.35 / cat.tempo

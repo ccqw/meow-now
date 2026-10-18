@@ -1,9 +1,17 @@
 import numpy as np
 import pytest
-from conftest import RATE, cat_pitch_track, ending_with, gliding_burst, speech_like
+from conftest import (
+    RATE,
+    cat_pitch_track,
+    ending_with,
+    gliding_burst,
+    spectral_centroid,
+    speech_like,
+)
 
 from meow_now.analysis import Syllable
 from meow_now.audio import SAMPLE_RATE
+from meow_now.cats import CATS, Voice
 from meow_now.mockery import (
     BORED_AFTER_S,
     CAT_CENTER_HZ,
@@ -184,3 +192,59 @@ def test_mockery_meows_follow_the_speakers_pitch():
     assert heard == sorted(heard)
     for got, want in zip(heard, planned, strict=True):
         assert 0.75 * want < got < 1.05 * want
+
+
+def _heard_pitch(result):
+    track = cat_pitch_track(result.audio, SAMPLE_RATE)
+    return float(np.median(track[track > 0]))
+
+
+def test_mockery_is_in_the_given_cats_voice():
+    x = speech_like([120, 150, 180, 140, 110, 160])
+    grumpy = mock(x, RATE, seed=4, cat=CATS["grumpy"])
+    anxious = mock(x, RATE, seed=4, cat=CATS["anxious"])
+    assert len(grumpy.meows) == len(anxious.meows) == 6
+    # Planned around each cat's own pitch, in each cat's own voice.
+    for result, cat in ((grumpy, CATS["grumpy"]), (anxious, CATS["anxious"])):
+        assert np.median([m.pitch for m in result.meows]) == pytest.approx(cat.pitch, rel=0.25)
+        for m in result.meows:
+            assert (m.formant_scale, m.breathiness, m.roughness) == (
+                cat.voice.formant_scale,
+                cat.voice.breathiness,
+                cat.voice.roughness,
+            )
+    # And it is heard that way: the big grumpy cat lower and darker than the small anxious one.
+    assert _heard_pitch(grumpy) < 0.75 * _heard_pitch(anxious)
+    assert spectral_centroid(grumpy.audio, SAMPLE_RATE) < spectral_centroid(
+        anxious.audio, SAMPLE_RATE
+    )
+
+
+@pytest.mark.parametrize("make", [lambda: speech_like([120, 160, 200]), _question])
+def test_mockery_in_a_cats_voice_is_deterministic_per_seed(make):
+    x = make()
+    a = mock(x, RATE, seed=9, cat=CATS["diva"])
+    b = mock(x, RATE, seed=9, cat=CATS["diva"])
+    assert a.meows == b.meows and a.extras == b.extras
+    assert np.array_equal(a.audio, b.audio)
+    assert not np.array_equal(a.audio, mock(x, RATE, seed=9).audio)
+
+
+def test_mockery_reactions_use_the_cats_voice():
+    result = mock(_question(), RATE, seed=2, cat=CATS["grumpy"])
+    assert result.reaction == "question"
+    ((_, meh),) = result.extras
+    assert meh.roughness == CATS["grumpy"].voice.roughness
+    assert meh.pitch == pytest.approx(CATS["grumpy"].pitch * 0.9)
+
+
+def test_mockery_without_a_cat_is_the_plain_voice():
+    plain = Voice()
+    result = mock(speech_like([120, 160, 200]), RATE, seed=1)
+    for m in result.meows:
+        assert (m.formant_scale, m.breathiness, m.roughness) == (
+            plain.formant_scale,
+            plain.breathiness,
+            plain.roughness,
+        )
+    assert np.median([m.pitch for m in result.meows]) == pytest.approx(CAT_CENTER_HZ, rel=0.25)

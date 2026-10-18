@@ -3,6 +3,9 @@
 The cat also reacts to how you said it. Say nothing and it waits, then asks.
 End on a question and it answers, flatly. Go on past about 40 seconds and it
 loses interest, meowing shorter and quieter until it yawns.
+
+Given one of the talkative cats, the mockery is in that cat's voice and
+centred on its pitch; otherwise it is a plain, mid-range cat.
 """
 
 from __future__ import annotations
@@ -14,8 +17,9 @@ import numpy as np
 from meow_now import meows
 from meow_now.analysis import Analysis, Syllable, analyze
 from meow_now.audio import ANALYSIS_RATE, SAMPLE_RATE, resample
+from meow_now.cats import Cat, Voice
 
-CAT_CENTER_HZ = 650.0  # where the speaker's median pitch lands, in cat
+CAT_CENTER_HZ = 650.0  # where the speaker's median pitch lands, in cat, unless a cat is given
 CAT_MIN_HZ = 350.0
 CAT_MAX_HZ = 1200.0
 MAX_INPUT_S = 60.0
@@ -40,13 +44,15 @@ class Mockery:
     extras: tuple[tuple[float, meows.Meow], ...] = ()  # (start, meow) not tied to a syllable
 
 
-def cat_pitch(voice_pitch: float | None, median: float | None) -> float:
+def cat_pitch(
+    voice_pitch: float | None, median: float | None, center: float = CAT_CENTER_HZ
+) -> float:
     """Map a speaker's pitch into cat range, keeping how high or low it was relative to them."""
     if not voice_pitch or not median:
-        return CAT_CENTER_HZ * 1.1  # unvoiced: a short high mew
+        return center * 1.1  # unvoiced: a short high mew
     ratio = voice_pitch / median
     # Exaggerate a little: cats are more dramatic than people.
-    return float(np.clip(CAT_CENTER_HZ * ratio**1.3, CAT_MIN_HZ, CAT_MAX_HZ))
+    return float(np.clip(center * ratio**1.3, CAT_MIN_HZ, CAT_MAX_HZ))
 
 
 def ends_rising(syl: Syllable) -> bool:
@@ -75,13 +81,15 @@ def clock(seconds: float) -> str:
     return f"{whole // 60}:{whole % 60:02d}"
 
 
-def mock(samples: np.ndarray, rate: int, seed: int = 0) -> Mockery:
-    """Analyze a recording and render the meow version of it at SAMPLE_RATE."""
+def mock(samples: np.ndarray, rate: int, seed: int = 0, cat: Cat | None = None) -> Mockery:
+    """Analyze a recording and render the meow version of it at SAMPLE_RATE, in `cat`'s voice."""
     # Analysis cost scales with the sample rate, and 16 kHz is plenty for pitch.
     samples = resample(samples[: int(MAX_INPUT_S * rate)], rate, ANALYSIS_RATE)
     analysis = analyze(samples, ANALYSIS_RATE)
     rng = np.random.default_rng(seed)
     median = analysis.median_pitch
+    voice = cat.voice if cat else Voice()
+    center = cat.pitch if cat else CAT_CENTER_HZ
     syllables = analysis.syllables
 
     planned: list[meows.Meow] = []
@@ -89,11 +97,11 @@ def mock(samples: np.ndarray, rate: int, seed: int = 0) -> Mockery:
     for i, syl in enumerate(syllables):
         effort = boredom(syl.start)
         duration = max(0.08, float(np.clip(syl.duration * 1.1, 0.12, 1.4)) * effort)
-        meow = meows.Meow(
-            pitch=cat_pitch(syl.pitch, median),
+        meow = voice.meow(
+            pitch=cat_pitch(syl.pitch, median, center),
             duration=duration,
             loudness=(0.35 + 0.65 * syl.loudness) * effort,
-            kind=meows.kind_for(duration, rng) if syl.pitch else "mew",
+            kind=meows.kind_for(duration, rng, voice.kinds) if syl.pitch else "mew",
             contour=syl.contour,
         )
         planned.append(meow)
@@ -106,8 +114,8 @@ def mock(samples: np.ndarray, rate: int, seed: int = 0) -> Mockery:
     if not syllables:
         # The Silent Treatment: your silence back, then one small questioning mrrp.
         reaction, caption = "silent", "The cat waited. So did you."
-        mrrp = meows.Meow(
-            pitch=CAT_CENTER_HZ * 1.1,
+        mrrp = voice.meow(
+            pitch=center * 1.1,
             duration=0.35,
             loudness=0.5,
             kind="mrrp",
@@ -118,8 +126,8 @@ def mock(samples: np.ndarray, rate: int, seed: int = 0) -> Mockery:
         # Lost interest: the fading meows above, then one long falling yawn.
         stopped = next(s.start for s in syllables if s.start > BORED_AFTER_S)
         reaction, caption = "bored", f"The cat stopped listening at {clock(stopped)}."
-        yawn = meows.Meow(
-            pitch=CAT_CENTER_HZ * 0.85,
+        yawn = voice.meow(
+            pitch=center * 0.85,
             duration=1.3,
             loudness=0.45,
             kind="meow",
@@ -129,8 +137,8 @@ def mock(samples: np.ndarray, rate: int, seed: int = 0) -> Mockery:
     elif ends_rising(syllables[-1]):
         # The rhetorical "meh": your question mirrored, a pause, one flat falling answer.
         reaction, caption = "question", "You asked. The cat considered it. Meh."
-        meh = meows.Meow(
-            pitch=CAT_CENTER_HZ * 0.9,
+        meh = voice.meow(
+            pitch=center * 0.9,
             duration=0.45,
             loudness=0.6,
             kind="meow",
