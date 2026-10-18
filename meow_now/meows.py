@@ -156,16 +156,25 @@ def _wander(n: int, rate: int, rng: np.random.Generator, rms: float) -> np.ndarr
     return np.interp(np.arange(n) / step, np.arange(len(knots)), knots)
 
 
-def _pitch_track(meow: Meow, t: np.ndarray, rate: int, rng: np.random.Generator) -> np.ndarray:
-    x = t / max(meow.duration, 1e-3)  # 0..1 through the meow
+def pitch_shape(kind: str, contour: tuple[float, ...], x: np.ndarray) -> np.ndarray:
+    """The pitch of a meow over time, as multiples of its `pitch`, at x = 0..1 through it.
+
+    This is the deterministic part of the pitch track, before vibrato and jitter.
+    """
     # The basic shape: start a bit low, peak about a third in, fall away.
     shape = 0.82 + 0.18 * np.exp(-(((x - 0.35) / 0.3) ** 2)) - 0.12 * x
-    if meow.kind == "mew":
+    if kind == "mew":
         shape = 0.9 + 0.1 * np.sin(np.pi * x)
-    if meow.contour:
-        follow = np.interp(x, np.linspace(0, 1, len(meow.contour)), meow.contour)
+    if contour:
+        follow = np.interp(x, np.linspace(0, 1, len(contour)), contour)
         # Follow the speaker's intonation, but keep it recognisably a meow.
         shape = shape * follow**0.8
+    return shape
+
+
+def _pitch_track(meow: Meow, t: np.ndarray, rate: int, rng: np.random.Generator) -> np.ndarray:
+    x = t / max(meow.duration, 1e-3)  # 0..1 through the meow
+    shape = pitch_shape(meow.kind, meow.contour, x)
 
     depth = meow.vibrato_depth * rng.uniform(*VIBRATO_DEPTH_SPREAD)
     if meow.kind == "yowl":

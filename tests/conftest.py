@@ -75,13 +75,10 @@ def spectral_centroid(samples: np.ndarray, rate: int) -> float:
 def cat_pitch_track(samples: np.ndarray, rate: int) -> np.ndarray:
     """Pitch per 10 ms frame (0 where unvoiced), from the analysis module's own tracker.
 
-    Its ceiling suits human speech, so it is raised to cover cat pitch for
-    this one call only: anything analyzing speech meanwhile is unaffected.
+    Its default ceiling suits human speech, so it is raised to cover cat pitch.
     """
     from meow_now import analysis
     from meow_now.audio import ANALYSIS_RATE, resample
 
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(analysis, "MAX_PITCH_HZ", 1500.0)
-        pitch = analysis.frame_pitch(resample(samples, rate, ANALYSIS_RATE), ANALYSIS_RATE)
-    return pitch.astype(np.float64)
+    resampled = resample(samples, rate, ANALYSIS_RATE)
+    return analysis.frame_pitch(resampled, ANALYSIS_RATE, max_pitch=1500.0).astype(np.float64)

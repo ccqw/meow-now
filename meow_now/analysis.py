@@ -18,6 +18,7 @@ WINDOW_S = 0.040  # 40 ms window: long enough for a 70 Hz pitch period
 MIN_PITCH_HZ = 70.0
 MAX_PITCH_HZ = 500.0
 VOICING_THRESHOLD = 0.45  # autocorrelation peak needed to call a frame voiced
+OCTAVE_PREFERENCE = 0.9  # half the lag wins if it correlates at least this well
 MIN_SYLLABLE_S = 0.08
 MAX_SYLLABLE_S = 1.2
 MAX_GAP_S = 0.06  # quieter dips shorter than this do not end a syllable
@@ -61,7 +62,7 @@ def frame_energy(samples: np.ndarray, rate: int) -> np.ndarray:
     return np.convolve(rms, kernel, mode="same")
 
 
-def frame_pitch(samples: np.ndarray, rate: int) -> np.ndarray:
+def frame_pitch(samples: np.ndarray, rate: int, max_pitch: float = MAX_PITCH_HZ) -> np.ndarray:
     """Pitch per frame in Hz, or 0 where the frame is not clearly voiced."""
     frames = _frames(samples, rate)
     frames = frames - frames.mean(axis=1, keepdims=True)
@@ -73,15 +74,34 @@ def frame_pitch(samples: np.ndarray, rate: int) -> np.ndarray:
     with np.errstate(divide="ignore", invalid="ignore"):
         ac = np.where(energy > 1e-9, ac / energy, 0.0)
 
-    lo = int(rate / MAX_PITCH_HZ)
+    lo = int(rate / max_pitch)
     hi = min(int(rate / MIN_PITCH_HZ), ac.shape[1] - 2)
-    band = ac[:, lo:hi]
+    rows = np.arange(len(ac))
+    # Every frame correlates with itself at small lags. A low voice keeps that
+    # central lobe up long enough to reach a high ceiling, so search only past
+    # the point where the correlation first goes negative.
+    below = ac[:, :hi] < 0
+    first = np.where(below.any(axis=1), np.argmax(below, axis=1), hi)
+    band = np.where(np.arange(lo, hi)[None, :] >= first[:, None], ac[:, lo:hi], -np.inf)
     best = np.argmax(band, axis=1)
-    peak = band[np.arange(len(band)), best]
+    peak = band[rows, best]
+    # A period's multiples correlate too, and on a high voice sampled at a few
+    # samples per period the true peak can fall between samples and lose to its
+    # double: an octave too low. Prefer half the lag when it correlates nearly
+    # as well, up to twice (for a quadruple).
+    for _ in range(2):
+        half = np.rint((best + lo) / 2).astype(np.int64) - lo
+        near = np.stack([half - 1, half, half + 1], axis=1)
+        ok = near >= 0
+        values = np.where(ok, band[rows[:, None], np.clip(near, 0, None)], -np.inf)
+        pick = np.argmax(values, axis=1)
+        value = values[rows, pick]
+        better = (half >= 1) & (value >= OCTAVE_PREFERENCE * peak)
+        best = np.where(better, near[rows, pick], best)
+        peak = np.where(better, value, peak)
     lag = (best + lo).astype(np.float64)
 
     # Parabolic interpolation around the peak for sub-sample lag accuracy.
-    rows = np.arange(len(ac))
     left = ac[rows, np.clip(best + lo - 1, 0, None)]
     right = ac[rows, best + lo + 1]
     denom = left - 2 * peak + right
@@ -125,14 +145,18 @@ def _split_at_valleys(energy: np.ndarray, start: int, end: int) -> list[tuple[in
     return pieces
 
 
-def analyze(samples: np.ndarray, rate: int) -> Analysis:
-    """Break a recording into syllables."""
+def analyze(samples: np.ndarray, rate: int, max_pitch: float = MAX_PITCH_HZ) -> Analysis:
+    """Break a recording into syllables.
+
+    `max_pitch` is the highest pitch the tracker looks for. The default suits
+    speech; raise it to follow a cat, or a person doing a cat voice.
+    """
     duration = len(samples) / rate if rate else 0.0
     if len(samples) == 0:
         return Analysis(duration=0.0, syllables=())
 
     energy = frame_energy(samples, rate)
-    pitch = frame_pitch(samples, rate)
+    pitch = frame_pitch(samples, rate, max_pitch)
     peak = float(energy.max())
     if peak < 1e-4:  # digital silence or near enough
         return Analysis(duration=duration, syllables=())
