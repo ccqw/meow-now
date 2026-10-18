@@ -24,7 +24,7 @@ from meow_now.middleware import (
     apply_nonce,
     csp_nonce,
 )
-from meow_now.mockery import MAX_INPUT_S, mock
+from meow_now.mockery import MAX_INPUT_S, Mockery, mock
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +130,113 @@ def _monologue_json(result: cats.Monologue, seed: int, **extra) -> JSONResponse:
     )
 
 
+def _mockery_json(result: Mockery, seed: int, mocker: cats.Cat | None) -> JSONResponse:
+    """The response for a mockery: each syllable of yours beside the meow that replaced it."""
+    return JSONResponse(
+        {
+            "audio": _data_url(result.audio),
+            "seed": seed,
+            "cat": _cat_json(mocker) if mocker else None,
+            "input_seconds": round(min(result.analysis.duration, MAX_INPUT_S), 2),
+            "truncated": result.analysis.duration > MAX_INPUT_S,
+            "meows": [
+                {
+                    "start": round(s.start, 3),
+                    "duration": round(m.duration, 3),
+                    "pitch_hz": round(m.pitch, 1),
+                    "your_pitch_hz": _rounded(s.pitch, 1),
+                    "kind": m.kind,
+                    "contour": [round(c, 3) for c in s.contour],
+                    "loudness": round(s.loudness, 3),
+                }
+                for s, m in zip(result.analysis.syllables, result.meows, strict=True)
+            ],
+            "reaction": result.reaction,
+            "caption": result.caption,
+            "reaction_meows": [
+                {
+                    "start": round(start, 3),
+                    "duration": round(m.duration, 3),
+                    "pitch_hz": round(m.pitch, 1),
+                    "kind": m.kind,
+                }
+                for start, m in result.extras
+            ],
+        }
+    )
+
+
+def _rounded(x: float | None, places: int) -> float | None:
+    return None if x is None else round(float(x), places)
+
+
+def _copycat_head(phrase: copycat.Phrase) -> dict:
+    return {
+        "seed": phrase.seed,
+        "length": phrase.length,
+        "cat": _cat_json(phrase.cat) if phrase.cat else None,
+        "pass_score": copycat.PASS_SCORE,
+    }
+
+
+def _phrase_json(phrase: copycat.Phrase, audio: np.ndarray) -> JSONResponse:
+    """A phrase to copy: each meow as heard (median pitch, contour over it), and the audio."""
+    return JSONResponse(
+        {
+            **_copycat_head(phrase),
+            "duration": round(phrase.duration, 3),
+            "meows": [
+                {
+                    "start": start,
+                    "duration": m.duration,
+                    "pitch_hz": round(copycat.target_pitch(m), 1),
+                    "kind": m.kind,
+                    "contour": [round(c, 3) for c in copycat.target_contour(m)],
+                }
+                for start, m in zip(phrase.starts, phrase.meows, strict=True)
+            ],
+            "audio": _data_url(audio),
+        }
+    )
+
+
+def _heard_json(m: copycat.MeowScore) -> dict | None:
+    if m.heard_start is None:
+        return None
+    return {
+        "start": m.heard_start,
+        "duration": m.heard_duration,
+        "pitch_hz": m.heard_pitch,
+        "contour": [round(c, 3) for c in m.heard_contour],
+    }
+
+
+def _score_json(phrase: copycat.Phrase, result: copycat.Score) -> JSONResponse:
+    """A scored copy: the total, and for each meow its verdict, errors and what was heard."""
+    return JSONResponse(
+        {
+            **_copycat_head(phrase),
+            "score": result.score,
+            "passed": result.passed,
+            "extra": result.extra,
+            "heard": result.heard,
+            "tempo": round(result.tempo, 3),
+            "transpose": round(result.transpose, 2),
+            "meows": [
+                {
+                    "verdict": m.verdict,
+                    "score": round(m.score, 3),
+                    "onset_error": _rounded(m.onset_error, 3),
+                    "pitch_error": _rounded(m.pitch_error, 2),
+                    "shape_error": _rounded(m.shape_error, 2),
+                    "heard": _heard_json(m),
+                }
+                for m in result.meows
+            ],
+        }
+    )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     app = FastAPI(title="meow-now", version=__version__, docs_url="/api/docs", redoc_url=None)
@@ -170,38 +277,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         samples, rate = await _read_wav(request, settings.max_upload_bytes)
         async with renders.slot():
             result = await run_in_threadpool(mock, samples, rate, seed, mocker)
-        return JSONResponse(
-            {
-                "audio": _data_url(result.audio),
-                "seed": seed,
-                "cat": _cat_json(mocker) if mocker else None,
-                "input_seconds": round(min(result.analysis.duration, MAX_INPUT_S), 2),
-                "truncated": result.analysis.duration > MAX_INPUT_S,
-                "meows": [
-                    {
-                        "start": round(s.start, 3),
-                        "duration": round(m.duration, 3),
-                        "pitch_hz": round(m.pitch, 1),
-                        "your_pitch_hz": round(s.pitch, 1) if s.pitch else None,
-                        "kind": m.kind,
-                        "contour": [round(c, 3) for c in s.contour],
-                        "loudness": round(s.loudness, 3),
-                    }
-                    for s, m in zip(result.analysis.syllables, result.meows, strict=True)
-                ],
-                "reaction": result.reaction,
-                "caption": result.caption,
-                "reaction_meows": [
-                    {
-                        "start": round(start, 3),
-                        "duration": round(m.duration, 3),
-                        "pitch_hz": round(m.pitch, 1),
-                        "kind": m.kind,
-                    }
-                    for start, m in result.extras
-                ],
-            }
-        )
+        return _mockery_json(result, seed, mocker)
 
     @app.post("/api/cats/{cat_id}/monologue", dependencies=limited)
     async def cat_monologue(
@@ -272,26 +348,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         phrase = copycat.phrase(seed, length, performer)
         async with renders.slot():
             audio = await run_in_threadpool(copycat.render, phrase)
-        return JSONResponse(
-            {
-                "seed": seed,
-                "length": length,
-                "cat": _cat_json(performer) if performer else None,
-                "duration": round(phrase.duration, 3),
-                "pass_score": copycat.PASS_SCORE,
-                "meows": [
-                    {
-                        "start": start,
-                        "duration": m.duration,
-                        "pitch_hz": round(copycat.target_pitch(m), 1),
-                        "kind": m.kind,
-                        "contour": [round(c, 3) for c in copycat.target_contour(m)],
-                    }
-                    for start, m in zip(phrase.starts, phrase.meows, strict=True)
-                ],
-                "audio": _data_url(audio),
-            }
-        )
+        return _phrase_json(phrase, audio)
 
     @app.post("/api/copycat/score", dependencies=limited)
     async def copycat_score(
@@ -307,40 +364,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         async with renders.slot():
             result = await run_in_threadpool(copycat.score, phrase, samples, rate)
 
-        def num(x: float | None, places: int) -> float | None:
-            return None if x is None else round(float(x), places)
-
-        return JSONResponse(
-            {
-                "seed": seed,
-                "length": length,
-                "cat": _cat_json(performer) if performer else None,
-                "score": result.score,
-                "passed": result.passed,
-                "pass_score": copycat.PASS_SCORE,
-                "extra": result.extra,
-                "heard": result.heard,
-                "tempo": round(result.tempo, 3),
-                "transpose": round(result.transpose, 2),
-                "meows": [
-                    {
-                        "verdict": m.verdict,
-                        "score": round(m.score, 3),
-                        "onset_error": num(m.onset_error, 3),
-                        "pitch_error": num(m.pitch_error, 2),
-                        "shape_error": num(m.shape_error, 2),
-                        "heard": None
-                        if m.heard_start is None
-                        else {
-                            "start": m.heard_start,
-                            "duration": m.heard_duration,
-                            "pitch_hz": m.heard_pitch,
-                            "contour": [round(c, 3) for c in m.heard_contour],
-                        },
-                    }
-                    for m in result.meows
-                ],
-            }
-        )
+        return _score_json(phrase, result)
 
     return app
