@@ -155,10 +155,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             cat = cats.get_cat(cat_id, np.random.default_rng(seed))
         except KeyError:
             raise HTTPException(404, f"no cat called {cat_id!r}") from None
+        # The Ollama call is network wait, not CPU, so it does not hold a render slot.
+        text, source = await run_in_threadpool(
+            cats.monologue_text, cat, seed, settings.ollama_url, settings.ollama_model
+        )
         async with renders.slot():
-            result = await run_in_threadpool(
-                cats.monologue, cat, seed, settings.ollama_url, settings.ollama_model
-            )
+            result = await run_in_threadpool(cats.render_monologue, cat, text, source, seed)
         return JSONResponse(
             {
                 "cat": {"id": cat.id, "name": cat.name, "tagline": cat.tagline},

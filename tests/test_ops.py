@@ -7,7 +7,7 @@ import pytest
 from conftest import RATE, speech_like
 from fastapi.testclient import TestClient
 
-from meow_now import web
+from meow_now import cats, web
 from meow_now.audio import encode_wav
 from meow_now.limits import RateLimiter
 from meow_now.middleware import JsonFormatter, apply_nonce
@@ -147,6 +147,39 @@ def test_returns_503_when_every_render_slot_is_busy(monkeypatch):
     assert first["resp"].status_code == 200
     # The slot is free again afterwards.
     assert client.post("/api/cats/grumpy/monologue?seed=1").status_code == 200
+
+
+def test_waiting_on_ollama_does_not_hold_a_render_slot(monkeypatch):
+    asked, release = threading.Event(), threading.Event()
+
+    def slow_ollama(*args, **kwargs):
+        asked.set()
+        release.wait(10)
+        return "Feed me now, servant."
+
+    monkeypatch.setattr(cats, "ask_ollama", slow_ollama)
+    settings = Settings(
+        ollama_url="http://ollama.invalid:11434",
+        ollama_model="x",
+        max_upload_bytes=4 * MB,
+        max_concurrent_renders=1,
+        render_wait_s=0.2,
+    )
+    client = TestClient(create_app(settings))
+    first = {}
+    worker = threading.Thread(
+        target=lambda: first.update(resp=client.post("/api/cats/diva/monologue?seed=1"))
+    )
+    worker.start()
+    try:
+        assert asked.wait(10)
+        # The only slot is free while the first request waits on Ollama.
+        assert client.post("/api/cats/grumpy/monologue?seed=1").status_code == 200
+    finally:
+        release.set()
+        worker.join(10)
+    assert first["resp"].status_code == 200
+    assert first["resp"].json()["source"] == "ollama"
 
 
 # Security headers
