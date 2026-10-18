@@ -1,11 +1,13 @@
 import asyncio
 import base64
+from dataclasses import replace
 
 import numpy as np
 import pytest
 from conftest import RATE, ending_with, gliding_burst, speech_like
 from fastapi.testclient import TestClient
 
+from meow_now import cats, copycat
 from meow_now.audio import SAMPLE_RATE, decode_wav, encode_wav
 from meow_now.web import Settings, create_app
 
@@ -299,3 +301,96 @@ def test_speak_rejects_bad_requests(client):
     assert client.post("/api/speak", json={"text": "x" * 1001}).status_code == 422
     assert client.post("/api/speak?seed=-1", json={"text": "hi"}).status_code == 422
     assert client.post("/api/speak", json={"text": "hi", "cat": "dog"}).status_code == 404
+
+
+# ---------- copycat ----------
+
+
+def _copy_of(seed, length, cat_id=None):
+    """A perfect copy of a phrase: its own plan, sung again with a fresh synthesis seed."""
+    p = copycat.phrase(seed, length, cats.CATS[cat_id] if cat_id else None)
+    return encode_wav(copycat.render(replace(p, seed=seed + 17)), SAMPLE_RATE)
+
+
+def test_copycat_phrase(client):
+    resp = client.get("/api/copycat/phrase?seed=9&length=3&cat=diva")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["seed"] == 9 and data["length"] == 3
+    assert data["cat"]["id"] == "diva"
+    assert data["pass_score"] == copycat.PASS_SCORE
+    assert len(data["meows"]) == 3
+    for m in data["meows"]:
+        assert set(m) == {"start", "duration", "pitch_hz", "kind", "contour"}
+        assert len(m["contour"]) == 8 and m["kind"] in ("meow", "mrrp", "mew")
+    starts = [m["start"] for m in data["meows"]]
+    assert starts == sorted(starts)
+    samples, rate = _decode_data_url(data["audio"])
+    assert rate == SAMPLE_RATE
+    assert len(samples) / rate == pytest.approx(data["duration"], abs=0.05)
+
+
+def test_copycat_phrase_is_deterministic_and_grows(client):
+    first = client.get("/api/copycat/phrase?seed=4&length=3").json()
+    assert first == client.get("/api/copycat/phrase?seed=4&length=3").json()
+    longer = client.get("/api/copycat/phrase?seed=4&length=4").json()
+    assert longer["meows"][:3] == first["meows"]
+    assert first["cat"] is None
+    other = client.get("/api/copycat/phrase?seed=5&length=3").json()
+    assert other["meows"] != first["meows"]
+
+
+def test_copycat_phrase_picks_a_seed_and_checks_its_query(client):
+    data = client.get("/api/copycat/phrase?length=2").json()
+    assert isinstance(data["seed"], int) and data["seed"] >= 0
+    assert client.get("/api/copycat/phrase").status_code == 422
+    assert client.get("/api/copycat/phrase?length=0").status_code == 422
+    assert client.get(f"/api/copycat/phrase?length={copycat.MAX_LENGTH + 1}").status_code == 422
+    assert client.get("/api/copycat/phrase?length=2&seed=-1").status_code == 422
+    assert client.get("/api/copycat/phrase?length=2&cat=dog").status_code == 404
+
+
+def test_copycat_scores_a_perfect_copy(client):
+    url = "/api/copycat/score?seed=9&length=3&cat=diva"
+    resp = client.post(url, content=_copy_of(9, 3, "diva"))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["score"] >= 90 and data["passed"] is True
+    assert data["cat"]["id"] == "diva" and data["extra"] == 0
+    assert [m["verdict"] for m in data["meows"]] == ["good"] * 3
+    phrase = client.get("/api/copycat/phrase?seed=9&length=3&cat=diva").json()
+    for m, target in zip(data["meows"], phrase["meows"], strict=True):
+        assert m["heard"]["start"] == pytest.approx(target["start"], abs=0.05)
+        assert m["heard"]["pitch_hz"] == pytest.approx(target["pitch_hz"], rel=0.1)
+        assert len(m["heard"]["contour"]) == 8
+        assert abs(m["onset_error"]) < 0.1 and abs(m["pitch_error"]) < 2.5
+
+
+def test_copycat_score_is_deterministic(client):
+    url = "/api/copycat/score?seed=2&length=4"
+    wav = _copy_of(2, 4)
+    first, second = client.post(url, content=wav), client.post(url, content=wav)
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+
+
+def test_copycat_scores_silence_and_the_wrong_phrase(client):
+    silence = encode_wav(np.zeros(RATE, dtype=np.float32), RATE)
+    data = client.post("/api/copycat/score?seed=3&length=2", content=silence).json()
+    assert data["score"] == 0 and data["passed"] is False
+    assert [m["verdict"] for m in data["meows"]] == ["missed", "missed"]
+    assert all(m["heard"] is None for m in data["meows"])
+    # A copy of a different phrase is not a copy of this one.
+    wrong = client.post("/api/copycat/score?seed=3&length=6", content=_copy_of(40, 6)).json()
+    assert wrong["passed"] is False
+
+
+def test_copycat_score_rejects_bad_input(client):
+    wav = _copy_of(1, 2)
+    assert client.post("/api/copycat/score?length=2", content=wav).status_code == 422
+    assert client.post("/api/copycat/score?seed=1", content=wav).status_code == 422
+    assert client.post("/api/copycat/score?seed=1&length=2&cat=dog", content=wav).status_code == 404
+    assert client.post("/api/copycat/score?seed=1&length=2", content=b"").status_code == 400
+    assert client.post("/api/copycat/score?seed=1&length=2", content=b"nope").status_code == 415
+    too_big = b"\0" * (5 * 1024 * 1024)
+    assert client.post("/api/copycat/score?seed=1&length=2", content=too_big).status_code == 413

@@ -15,7 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from meow_now import __version__, cats, meows
+from meow_now import __version__, cats, copycat, meows
 from meow_now.audio import SAMPLE_RATE, AudioError, decode_wav, encode_wav
 from meow_now.limits import RateLimiter, RenderSlots, rate_limit
 from meow_now.middleware import (
@@ -24,7 +24,7 @@ from meow_now.middleware import (
     apply_nonce,
     csp_nonce,
 )
-from meow_now.mockery import MAX_INPUT_S, mock
+from meow_now.mockery import MAX_INPUT_S, Mockery, mock
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,20 @@ async def _read_capped(request: Request, limit: int) -> bytes:
     return bytes(body)
 
 
+async def _read_wav(request: Request, limit: int) -> tuple[np.ndarray, int]:
+    """The request body decoded as WAV, or the 400, 413 or 415 that explains why it is not."""
+    body = await _read_capped(request, limit)
+    if not body:
+        raise HTTPException(400, "send a WAV recording as the request body")
+    try:
+        samples, rate = decode_wav(body)
+    except AudioError as exc:
+        raise HTTPException(415, str(exc)) from exc
+    if rate < 8000:
+        raise HTTPException(415, f"sample rate {rate} Hz is too low; use 8000 Hz or more")
+    return samples, rate
+
+
 def _cat_or_404(cat_id: str, seed: int) -> cats.Cat:
     """The cat called `cat_id`; `random` picks one from the seed."""
     try:
@@ -112,6 +126,113 @@ def _monologue_json(result: cats.Monologue, seed: int, **extra) -> JSONResponse:
             ],
             "audio": _data_url(result.audio),
             **extra,
+        }
+    )
+
+
+def _mockery_json(result: Mockery, seed: int, mocker: cats.Cat | None) -> JSONResponse:
+    """The response for a mockery: each syllable of yours beside the meow that replaced it."""
+    return JSONResponse(
+        {
+            "audio": _data_url(result.audio),
+            "seed": seed,
+            "cat": _cat_json(mocker) if mocker else None,
+            "input_seconds": round(min(result.analysis.duration, MAX_INPUT_S), 2),
+            "truncated": result.analysis.duration > MAX_INPUT_S,
+            "meows": [
+                {
+                    "start": round(s.start, 3),
+                    "duration": round(m.duration, 3),
+                    "pitch_hz": round(m.pitch, 1),
+                    "your_pitch_hz": _rounded(s.pitch, 1),
+                    "kind": m.kind,
+                    "contour": [round(c, 3) for c in s.contour],
+                    "loudness": round(s.loudness, 3),
+                }
+                for s, m in zip(result.analysis.syllables, result.meows, strict=True)
+            ],
+            "reaction": result.reaction,
+            "caption": result.caption,
+            "reaction_meows": [
+                {
+                    "start": round(start, 3),
+                    "duration": round(m.duration, 3),
+                    "pitch_hz": round(m.pitch, 1),
+                    "kind": m.kind,
+                }
+                for start, m in result.extras
+            ],
+        }
+    )
+
+
+def _rounded(x: float | None, places: int) -> float | None:
+    return None if x is None else round(float(x), places)
+
+
+def _copycat_head(phrase: copycat.Phrase) -> dict:
+    return {
+        "seed": phrase.seed,
+        "length": phrase.length,
+        "cat": _cat_json(phrase.cat) if phrase.cat else None,
+        "pass_score": copycat.PASS_SCORE,
+    }
+
+
+def _phrase_json(phrase: copycat.Phrase, audio: np.ndarray) -> JSONResponse:
+    """A phrase to copy: each meow as heard (median pitch, contour over it), and the audio."""
+    return JSONResponse(
+        {
+            **_copycat_head(phrase),
+            "duration": round(phrase.duration, 3),
+            "meows": [
+                {
+                    "start": start,
+                    "duration": m.duration,
+                    "pitch_hz": round(copycat.target_pitch(m), 1),
+                    "kind": m.kind,
+                    "contour": [round(c, 3) for c in copycat.target_contour(m)],
+                }
+                for start, m in zip(phrase.starts, phrase.meows, strict=True)
+            ],
+            "audio": _data_url(audio),
+        }
+    )
+
+
+def _heard_json(m: copycat.MeowScore) -> dict | None:
+    if m.heard_start is None:
+        return None
+    return {
+        "start": m.heard_start,
+        "duration": m.heard_duration,
+        "pitch_hz": m.heard_pitch,
+        "contour": [round(c, 3) for c in m.heard_contour],
+    }
+
+
+def _score_json(phrase: copycat.Phrase, result: copycat.Score) -> JSONResponse:
+    """A scored copy: the total, and for each meow its verdict, errors and what was heard."""
+    return JSONResponse(
+        {
+            **_copycat_head(phrase),
+            "score": result.score,
+            "passed": result.passed,
+            "extra": result.extra,
+            "heard": result.heard,
+            "tempo": round(result.tempo, 3),
+            "transpose": round(result.transpose, 2),
+            "meows": [
+                {
+                    "verdict": m.verdict,
+                    "score": round(m.score, 3),
+                    "onset_error": _rounded(m.onset_error, 3),
+                    "pitch_error": _rounded(m.pitch_error, 2),
+                    "shape_error": _rounded(m.shape_error, 2),
+                    "heard": _heard_json(m),
+                }
+                for m in result.meows
+            ],
         }
     )
 
@@ -153,50 +274,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Body: a PCM WAV recording (Content-Type audio/wav), up to 60 seconds."""
         seed = secrets.randbelow(1 << 30) if seed is None else seed
         mocker = _cat_or_404(cat, seed) if cat else None
-        body = await _read_capped(request, settings.max_upload_bytes)
-        if not body:
-            raise HTTPException(400, "send a WAV recording as the request body")
-        try:
-            samples, rate = decode_wav(body)
-        except AudioError as exc:
-            raise HTTPException(415, str(exc)) from exc
-        if rate < 8000:
-            raise HTTPException(415, f"sample rate {rate} Hz is too low; use 8000 Hz or more")
-
+        samples, rate = await _read_wav(request, settings.max_upload_bytes)
         async with renders.slot():
             result = await run_in_threadpool(mock, samples, rate, seed, mocker)
-        return JSONResponse(
-            {
-                "audio": _data_url(result.audio),
-                "seed": seed,
-                "cat": _cat_json(mocker) if mocker else None,
-                "input_seconds": round(min(result.analysis.duration, MAX_INPUT_S), 2),
-                "truncated": result.analysis.duration > MAX_INPUT_S,
-                "meows": [
-                    {
-                        "start": round(s.start, 3),
-                        "duration": round(m.duration, 3),
-                        "pitch_hz": round(m.pitch, 1),
-                        "your_pitch_hz": round(s.pitch, 1) if s.pitch else None,
-                        "kind": m.kind,
-                        "contour": [round(c, 3) for c in s.contour],
-                        "loudness": round(s.loudness, 3),
-                    }
-                    for s, m in zip(result.analysis.syllables, result.meows, strict=True)
-                ],
-                "reaction": result.reaction,
-                "caption": result.caption,
-                "reaction_meows": [
-                    {
-                        "start": round(start, 3),
-                        "duration": round(m.duration, 3),
-                        "pitch_hz": round(m.pitch, 1),
-                        "kind": m.kind,
-                    }
-                    for start, m in result.extras
-                ],
-            }
-        )
+        return _mockery_json(result, seed, mocker)
 
     @app.post("/api/cats/{cat_id}/monologue", dependencies=limited)
     async def cat_monologue(
@@ -249,5 +330,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """A single meow as audio/wav, for the soundboard (or your ringtone)."""
         clip = meows.synthesize(meows.Meow(pitch=pitch, duration=duration, kind=kind), seed=seed)
         return Response(encode_wav(clip, SAMPLE_RATE), media_type="audio/wav")
+
+    copycat_length = Query(
+        ..., ge=copycat.MIN_LENGTH, le=copycat.MAX_LENGTH, description="meows in the phrase"
+    )
+    copycat_cat = Query(None, description="a cat id, or random, to perform the phrase")
+
+    @app.get("/api/copycat/phrase", dependencies=limited)
+    async def copycat_phrase(
+        length: int = copycat_length,
+        seed: int | None = Query(None, ge=0),
+        cat: str | None = copycat_cat,
+    ) -> JSONResponse:
+        """A Copycat phrase to copy: its meows, as heard, and its audio."""
+        seed = secrets.randbelow(1 << 30) if seed is None else seed
+        performer = _cat_or_404(cat, seed) if cat else None
+        phrase = copycat.phrase(seed, length, performer)
+        async with renders.slot():
+            audio = await run_in_threadpool(copycat.render, phrase)
+        return _phrase_json(phrase, audio)
+
+    @app.post("/api/copycat/score", dependencies=limited)
+    async def copycat_score(
+        request: Request,
+        length: int = copycat_length,
+        seed: int = Query(..., ge=0, description="the seed the phrase was drawn from"),
+        cat: str | None = copycat_cat,
+    ) -> JSONResponse:
+        """Body: a PCM WAV recording of you copying the phrase, up to 30 seconds."""
+        performer = _cat_or_404(cat, seed) if cat else None
+        samples, rate = await _read_wav(request, settings.max_upload_bytes)
+        phrase = copycat.phrase(seed, length, performer)
+        async with renders.slot():
+            result = await run_in_threadpool(copycat.score, phrase, samples, rate)
+
+        return _score_json(phrase, result)
 
     return app
