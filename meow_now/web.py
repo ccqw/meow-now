@@ -15,7 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from meow_now import __version__, cats, meows
+from meow_now import __version__, cats, copycat, meows
 from meow_now.audio import SAMPLE_RATE, AudioError, decode_wav, encode_wav
 from meow_now.limits import RateLimiter, RenderSlots, rate_limit
 from meow_now.middleware import (
@@ -79,6 +79,20 @@ async def _read_capped(request: Request, limit: int) -> bytes:
         if len(body) > limit:
             raise HTTPException(413, "recording too large")
     return bytes(body)
+
+
+async def _read_wav(request: Request, limit: int) -> tuple[np.ndarray, int]:
+    """The request body decoded as WAV, or the 400, 413 or 415 that explains why it is not."""
+    body = await _read_capped(request, limit)
+    if not body:
+        raise HTTPException(400, "send a WAV recording as the request body")
+    try:
+        samples, rate = decode_wav(body)
+    except AudioError as exc:
+        raise HTTPException(415, str(exc)) from exc
+    if rate < 8000:
+        raise HTTPException(415, f"sample rate {rate} Hz is too low; use 8000 Hz or more")
+    return samples, rate
 
 
 def _cat_or_404(cat_id: str, seed: int) -> cats.Cat:
@@ -153,16 +167,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Body: a PCM WAV recording (Content-Type audio/wav), up to 60 seconds."""
         seed = secrets.randbelow(1 << 30) if seed is None else seed
         mocker = _cat_or_404(cat, seed) if cat else None
-        body = await _read_capped(request, settings.max_upload_bytes)
-        if not body:
-            raise HTTPException(400, "send a WAV recording as the request body")
-        try:
-            samples, rate = decode_wav(body)
-        except AudioError as exc:
-            raise HTTPException(415, str(exc)) from exc
-        if rate < 8000:
-            raise HTTPException(415, f"sample rate {rate} Hz is too low; use 8000 Hz or more")
-
+        samples, rate = await _read_wav(request, settings.max_upload_bytes)
         async with renders.slot():
             result = await run_in_threadpool(mock, samples, rate, seed, mocker)
         return JSONResponse(
@@ -249,5 +254,93 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """A single meow as audio/wav, for the soundboard (or your ringtone)."""
         clip = meows.synthesize(meows.Meow(pitch=pitch, duration=duration, kind=kind), seed=seed)
         return Response(encode_wav(clip, SAMPLE_RATE), media_type="audio/wav")
+
+    copycat_length = Query(
+        ..., ge=copycat.MIN_LENGTH, le=copycat.MAX_LENGTH, description="meows in the phrase"
+    )
+    copycat_cat = Query(None, description="a cat id, or random, to perform the phrase")
+
+    @app.get("/api/copycat/phrase", dependencies=limited)
+    async def copycat_phrase(
+        length: int = copycat_length,
+        seed: int | None = Query(None, ge=0),
+        cat: str | None = copycat_cat,
+    ) -> JSONResponse:
+        """A Copycat phrase to copy: its meows, as heard, and its audio."""
+        seed = secrets.randbelow(1 << 30) if seed is None else seed
+        performer = _cat_or_404(cat, seed) if cat else None
+        phrase = copycat.phrase(seed, length, performer)
+        async with renders.slot():
+            audio = await run_in_threadpool(copycat.render, phrase)
+        return JSONResponse(
+            {
+                "seed": seed,
+                "length": length,
+                "cat": _cat_json(performer) if performer else None,
+                "duration": round(phrase.duration, 3),
+                "pass_score": copycat.PASS_SCORE,
+                "meows": [
+                    {
+                        "start": start,
+                        "duration": m.duration,
+                        "pitch_hz": round(copycat.target_pitch(m), 1),
+                        "kind": m.kind,
+                        "contour": [round(c, 3) for c in copycat.target_contour(m)],
+                    }
+                    for start, m in zip(phrase.starts, phrase.meows, strict=True)
+                ],
+                "audio": _data_url(audio),
+            }
+        )
+
+    @app.post("/api/copycat/score", dependencies=limited)
+    async def copycat_score(
+        request: Request,
+        length: int = copycat_length,
+        seed: int = Query(..., ge=0, description="the seed the phrase was drawn from"),
+        cat: str | None = copycat_cat,
+    ) -> JSONResponse:
+        """Body: a PCM WAV recording of you copying the phrase, up to 30 seconds."""
+        performer = _cat_or_404(cat, seed) if cat else None
+        samples, rate = await _read_wav(request, settings.max_upload_bytes)
+        phrase = copycat.phrase(seed, length, performer)
+        async with renders.slot():
+            result = await run_in_threadpool(copycat.score, phrase, samples, rate)
+
+        def num(x: float | None, places: int) -> float | None:
+            return None if x is None else round(float(x), places)
+
+        return JSONResponse(
+            {
+                "seed": seed,
+                "length": length,
+                "cat": _cat_json(performer) if performer else None,
+                "score": result.score,
+                "passed": result.passed,
+                "pass_score": copycat.PASS_SCORE,
+                "extra": result.extra,
+                "heard": result.heard,
+                "tempo": round(result.tempo, 3),
+                "transpose": round(result.transpose, 2),
+                "meows": [
+                    {
+                        "verdict": m.verdict,
+                        "score": round(m.score, 3),
+                        "onset_error": num(m.onset_error, 3),
+                        "pitch_error": num(m.pitch_error, 2),
+                        "shape_error": num(m.shape_error, 2),
+                        "heard": None
+                        if m.heard_start is None
+                        else {
+                            "start": m.heard_start,
+                            "duration": m.heard_duration,
+                            "pitch_hz": m.heard_pitch,
+                            "contour": [round(c, 3) for c in m.heard_contour],
+                        },
+                    }
+                    for m in result.meows
+                ],
+            }
+        )
 
     return app

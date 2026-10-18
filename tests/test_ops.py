@@ -76,6 +76,8 @@ def test_api_returns_429_with_retry_after():
     # Monologues and typed lines share the same budget; cheap endpoints are not limited.
     assert client.post("/api/cats/dog/monologue").status_code == 429
     assert client.post("/api/speak", json={"text": "hello"}).status_code == 429
+    assert client.get("/api/copycat/phrase?length=2").status_code == 429
+    assert client.post("/api/copycat/score?length=2&seed=1").status_code == 429
     assert client.get("/api/cats").status_code == 200
     assert client.get("/api/meow").status_code == 200
 
@@ -143,6 +145,10 @@ def test_returns_503_when_every_render_slot_is_busy(monkeypatch):
         # Monologues and typed lines share the slots.
         assert client.post("/api/cats/grumpy/monologue?seed=1").status_code == 503
         assert client.post("/api/speak", json={"text": "let me in"}).status_code == 503
+        # So do Copycat's phrases and scores.
+        assert client.get("/api/copycat/phrase?length=2&seed=1").status_code == 503
+        score = client.post("/api/copycat/score?length=2&seed=1", content=wav)
+        assert score.status_code == 503
     finally:
         release.set()
         worker.join(10)
