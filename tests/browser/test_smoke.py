@@ -390,3 +390,132 @@ def test_word_counter_warns_past_the_limit(home: Page):
     expect(home.locator("#say-count")).to_have_text("40 of 45 words")
     box.fill(" ".join(["mew"] * 50))
     expect(home.locator("#say-count")).to_have_text("Over 45 words: the cat will stop at 45.")
+
+
+# ---------- copycat ----------
+
+
+def test_copycat_plays_a_round_from_the_keyboard(home: Page):
+    home.evaluate(MOUTH_LOG)
+    home.locator("#cc-go").click()
+    # The stage cat performs the phrase: its target on the ribbon, its meows in the bubble.
+    expect(home.locator("#track")).to_have_attribute("data-mode", "copycat", timeout=15000)
+    expect(home.locator("#ribbon-dim .cc-target")).to_have_count(2)
+    expect(home.locator("#subtitle .w")).to_have_count(2)
+    assert home.locator("#cc-audio").evaluate(WAV_SRC)
+    home.wait_for_function("() => window.mouths.includes('open')", timeout=15000)
+    # Then it is your turn, and the keyboard is already on the button that starts it.
+    rec = home.locator("#cc-rec")
+    expect(rec).to_be_visible(timeout=15000)
+    expect(rec).to_be_focused()
+    home.keyboard.press("Enter")
+    expect(rec).to_have_text("Done")
+    expect(home.locator("#copycat")).to_have_class(re.compile(r"\brecording\b"))
+    expect(home.locator("#cat")).to_have_attribute("data-state", "listening")
+    home.wait_for_timeout(2000)
+    if rec.is_visible():  # it also stops by itself once you go quiet
+        home.keyboard.press("Enter")
+    # The verdict: a score, one chip per meow, your attempt drawn over the target.
+    score = home.locator("#subtitle .cc-score")
+    expect(score).to_have_text(re.compile(r"^\d+$"), timeout=15000)
+    expect(home.locator("#subtitle .chip")).to_have_count(2)
+    expect(home.locator("#cc-round")).to_have_text(re.compile(r"^Round 1: \d+ out of 100$"))
+    expect(home.locator("#cc-go")).to_be_visible()
+    expect(home.locator("#cc-go")).to_have_text(re.compile(r"^(Next: 3 meows|Play again)$"))
+    # Screen readers hear the round, meow by meow.
+    expect(home.locator("#announce")).to_have_text(
+        re.compile(r"^Round 1: \d+ out of 100\. .*meow 2 ")
+    )
+
+
+def _scored(passed: bool, verdicts: list[str]) -> dict:
+    return {
+        "score": 94 if passed else 41,
+        "passed": passed,
+        "extra": 0,
+        "meows": [
+            {
+                "verdict": v,
+                "heard": None
+                if v == "missed"
+                else {
+                    "start": 0.35 + 0.8 * i,
+                    "duration": 0.3,
+                    "pitch_hz": 600.0,
+                    "contour": [1.0] * 8,
+                },
+            }
+            for i, v in enumerate(verdicts)
+        ],
+    }
+
+
+def test_copycat_keeps_your_best_and_grows_the_tune(stubbed: Page, server_url):
+    page = stubbed
+    page.emulate_media(reduced_motion="reduce")
+    outcomes = [_scored(True, ["good", "good"]), _scored(False, ["good", "higher", "missed"])]
+    page.route(
+        "**/api/copycat/score*",
+        lambda route: route.fulfill(
+            json=outcomes.pop(0), headers={"content-type": "application/json"}
+        ),
+    )
+    go, rec = page.locator("#cc-go"), page.locator("#cc-rec")
+    expect(page.locator("#cc-best")).to_be_hidden()
+
+    def play_round(meows: int):
+        with page.expect_response(re.compile(r"/api/copycat/phrase")) as info:
+            go.click()
+        assert f"length={meows}" in info.value.url
+        expect(page.locator("#ribbon-dim .cc-target")).to_have_count(meows, timeout=15000)
+        expect(rec).to_be_visible(timeout=15000)
+        rec.click()
+        expect(rec).to_have_text("Done")
+        page.wait_for_timeout(600)
+        if rec.is_visible():
+            rec.click()
+
+    play_round(2)
+    expect(page.locator("#subtitle .chip")).to_have_count(2, timeout=15000)
+    expect(page.locator("#subtitle .chip[data-v='good']")).to_have_count(2)
+    expect(page.locator("#toast")).to_contain_text("New best: 2 meows.")
+    expect(page.locator("#cc-best")).to_have_text("Best: 2 meows")
+    expect(go).to_have_text("Next: 3 meows")
+    assert page.evaluate("localStorage.getItem('meow-now:copycat-best')") == "2"
+
+    # The next phrase is one meow longer and starts the same way; a miss ends the run.
+    play_round(3)
+    chips = page.locator("#subtitle .chip")
+    expect(chips).to_have_count(3, timeout=15000)
+    expect(chips).to_have_text(
+        [re.compile("Spot on"), re.compile("Too high"), re.compile("Missed")]
+    )
+    expect(go).to_have_text("Play again")
+    expect(page.locator("#cc-status")).to_have_text(re.compile("1 round copied"))
+    expect(page.locator("#ribbon-dim .cc-heard")).to_have_count(2)
+
+    # Your best survives a reload, and nothing else is kept.
+    page.reload()
+    expect(page.locator("#cc-best")).to_have_text("Best: 2 meows")
+    expect(go).to_have_text("Play Copycat")
+
+
+def test_copycat_works_without_storage(home: Page):
+    # A browser that refuses storage still plays; it just cannot remember a best.
+    home.add_init_script(
+        "Object.defineProperty(window, 'localStorage', { get() { throw new Error('denied'); } });"
+    )
+    home.reload()
+    expect(home.locator("#cats button.cat")).to_have_count(4)
+    expect(home.locator("#cc-best")).to_be_hidden()
+    home.locator("#cc-go").click()
+    expect(home.locator("#ribbon-dim .cc-target")).to_have_count(2, timeout=15000)
+
+
+def test_choosing_another_cat_starts_a_new_game(home: Page):
+    home.locator("#cc-go").click()
+    expect(home.locator("#track")).to_have_attribute("data-mode", "copycat", timeout=15000)
+    home.locator("#cats button.cat").nth(2).click()
+    expect(home.locator("#cc-status")).to_have_text(re.compile("A new cat, a new tune"))
+    expect(home.locator("#cc-go")).to_have_text("Play Copycat")
+    expect(home.locator("#track")).to_have_attribute("data-mode", "empty")

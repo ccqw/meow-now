@@ -443,6 +443,52 @@
     .btn.ghost:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px var(--ink); }
   }
 
+  /* ---------- copycat ---------- */
+  .cc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .cc-best { color: var(--ink-soft); font-size: 0.92rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cc-best b { color: var(--ink); font-weight: 800; }
+  .cc-round { color: var(--ink-soft); font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+  .cc-round:empty { display: none; }
+  #copycat .rec { padding-right: 22px; }
+  #copycat:not(.recording) .rec .ring { opacity: 0.5; }
+  .track[data-turn] #playhead { display: none; }
+
+  /* The cat's verdict, in the bubble: the score, a line, and one chip per meow. */
+  .bubble .cc-verdict { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .bubble .cc-score {
+    font-family: var(--display); font-weight: 400; font-size: 2.6rem; line-height: 1;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .bubble .cc-of { color: var(--unsaid); font-weight: 700; }
+  .bubble .cc-say { flex-basis: 100%; margin-top: 2px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 12px 0 7px;
+    border-radius: 999px; font-size: 0.86rem; font-weight: 700; line-height: 1; white-space: nowrap;
+    background: rgba(43, 17, 41, 0.07); color: var(--bubble-ink);
+  }
+  .chip .n {
+    display: grid; place-items: center; width: 19px; height: 19px; border-radius: 50%;
+    font-size: 0.72rem; font-variant-numeric: tabular-nums; background: rgba(43, 17, 41, 0.1);
+  }
+  .chip svg { width: 15px; height: 15px; flex: none; }
+  .chip[data-v="good"] { background: var(--hl); }
+  .chip[data-v="good"] .n { background: rgba(43, 17, 41, 0.14); }
+  .chip[data-v="higher"], .chip[data-v="lower"] { background: rgb(255 134 173 / 0.32); }
+  .chip[data-v="early"], .chip[data-v="late"], .chip[data-v="shape"] { background: rgb(140 28 51 / 0.13); }
+  .chip[data-v="missed"], .chip[data-v="unvoiced"] {
+    background: transparent; color: var(--unsaid); box-shadow: inset 0 0 0 1.5px rgb(135 96 111 / 0.55);
+  }
+
+  /* Its target, on the ribbon: a gold band per meow. What it heard from you, in pink, on top. */
+  #ribbon .cc-target { fill: var(--catc); opacity: 0.85; }
+  #ribbon .cc-heard {
+    fill: none; stroke: var(--you); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+  #ribbon .cc-heard.unvoiced { stroke-dasharray: 2 5; }
+  #ribbon .cc-heard.off { stroke: #fff4e2; }
+
   /* A small speech bubble from the cat: the page's toast. */
   .toast {
     position: fixed; z-index: 20; left: 0; right: 0; bottom: max(20px, env(safe-area-inset-bottom));
@@ -601,12 +647,36 @@
       </div>
       <audio id="mock-audio" preload="auto"></audio>
       <audio id="cat-audio" preload="auto"></audio>
+      <audio id="cc-audio" preload="auto"></audio>
+      <audio id="cc-sfx" preload="auto"></audio>
     </section>
 
     <div class="console">
       <section class="block" id="cast" aria-labelledby="cast-h">
         <h2 id="cast-h">Pick a cat</h2>
         <div class="cats" id="cats"></div>
+      </section>
+
+      <section class="block" id="copycat" aria-labelledby="copycat-h">
+        <div class="cc-head">
+          <h2 id="copycat-h">Copycat</h2>
+          <span id="cc-best" class="cc-best" hidden>Best: <b id="cc-best-n">0</b> meows</span>
+        </div>
+        <p>The cat sings a little tune. Sing it back. Get it right and the next one is a meow longer.</p>
+        <div class="rec-row">
+          <button id="cc-go" class="btn" type="button">Play Copycat</button>
+          <button id="cc-rec" class="rec" type="button" hidden>
+            <span class="rec-knob" aria-hidden="true">
+              <svg class="ring" viewBox="0 0 64 64"><circle class="ring-track" cx="32" cy="32" r="29"/><circle id="cc-ring" class="ring-fill" cx="32" cy="32" r="29" pathLength="1"/></svg>
+              <svg class="ico i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <svg class="ico i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor"/></svg>
+            </span>
+            <span id="cc-rec-label">Your turn</span>
+          </button>
+          <button id="cc-again" class="btn ghost" type="button" hidden>Hear it again</button>
+        </div>
+        <p id="cc-round" class="cc-round"></p>
+        <p id="cc-status" class="status" role="status"></p>
       </section>
 
       <section class="block" id="mockery" aria-labelledby="mockery-h">
@@ -757,7 +827,7 @@ const catEl = $("cat"), catWrap = $("cat-wrap"), bubble = $("subtitle");
 const roster = new Map();  // id -> {id, name, tagline}
 let chosen = null;
 // mode: idle | listening | thinking. cue: a shared show waits for play; reading: you are typing it a line.
-const live = { mode: "idle", level: 0, wide: 0, peak: 0, cue: false, reading: false, twitch: 0 };
+const live = { mode: "idle", level: 0, wide: 0, peak: 0, cue: false, reading: false, twitch: 0, mood: null, sfx: null };
 const pose = { jaw: 0, mw: 1, ear: 0, wide: 0, lid: 0.4, tilt: 0, lx: 0, ly: 0 };
 const vel = { ear: 0, tilt: 0, lx: 0, ly: 0, wide: 0 };
 const written = {};
@@ -864,6 +934,19 @@ function frame(ts) {
   if (!playing && live.mode === "idle") {
     if (live.cue) Object.assign(target, { lx: -0.45, ly: 1, ear: 0.35 });
     else if (live.reading) Object.assign(target, wideLayout.matches ? { lx: 1, ly: 0.2 } : { lx: 0, ly: 1 }, { ear: 0.2 });
+  }
+  // A Copycat verdict: ears up and eyes wide for a win; ears down, eyes low for a miss.
+  if (live.mood && !playing) {
+    if (performance.now() > live.mood.until) live.mood = null;
+    else if (live.mood.kind === "happy") Object.assign(target, { ear: 1, wide: 0.7, lid: 0, tilt: 5 });
+    else Object.assign(target, { ear: -0.7, lid: 0.62, tilt: -6, ly: 0.7, lx: 0 });
+  }
+  // Its trill or its mrrp, played outside the show, still moves its mouth.
+  if (live.sfx && !playing) {
+    const t = ts / 1000 - live.sfx.t0;
+    const m = t <= live.sfx.dur ? mouthAt(live.sfx, t, reduce) : null;
+    if (!m) live.sfx = t > live.sfx.dur ? null : live.sfx;
+    else { target.jaw = clamp(m.jaw, 0, 1); target.mw = m.mw; }
   }
   if (live.twitch > 0.01) {  // one ear flick per keystroke
     target.ear = Math.max(target.ear, live.twitch * 0.8);
@@ -1081,14 +1164,15 @@ function drawTrace(now) {
 
 // ---------- the player ----------
 const playBtn = $("play"), timeEl = $("time"), nowShowing = $("now-showing");
-const mockAudio = $("mock-audio"), catAudio = $("cat-audio");
+const mockAudio = $("mock-audio"), catAudio = $("cat-audio"), ccAudio = $("cc-audio");
 let show = { audio: null, events: [], words: [], wordEls: [], duration: 0, reaction: null, kind: null };
 let shownKey = "", wordKey = "";
 
 // `keep` describes the clip for Save, Share and Copy link. With `autoplay: false` (a shared
 // link, opened before any click) the show waits for its cue instead of starting itself.
 function loadShow(audio, src, { keep: clip, autoplay = true, ...opts }) {
-  for (const other of [mockAudio, catAudio]) if (other !== audio) other.pause();
+  for (const other of [mockAudio, catAudio, ccAudio]) if (other !== audio) other.pause();
+  if (opts.kind !== "copycat") ccAbort();  // another show takes the stage: the game stops
   if (!opts.shared) forgetLink();
   show = { audio, events: [], words: [], wordEls: [], duration: 0, reaction: null, kind: null, ...opts };
   shownKey = wordKey = "";
@@ -1114,6 +1198,7 @@ function revealStage() {
 
 function clearShow() {
   if (show.audio) show.audio.pause();
+  ccAbort();
   if (show.shared) forgetLink();
   clearKeep();
   live.cue = false;
@@ -1212,7 +1297,7 @@ trackEl.addEventListener("keydown", (e) => {
   if (e.key in keys) { e.preventDefault(); seekTo(keys[e.key]); }
 });
 
-for (const a of [mockAudio, catAudio]) {
+for (const a of [mockAudio, catAudio, ccAudio]) {
   for (const type of ["play", "pause", "ended"]) a.addEventListener(type, () => { if (a === show.audio) syncPlayer(); });
   a.addEventListener("loadedmetadata", () => {
     // A mockery is drawn on the timeline of your recording; a monologue on its audio.
@@ -1533,6 +1618,13 @@ function selectCat(id, hop) {
   for (const b of $("cats").children) b.setAttribute("aria-pressed", String(b.dataset.id === id));
   setCoat(id, hop && changed);
   if (!changed) return;
+  if (cc.state !== "idle") {
+    // Each cat sings its own tunes, so a new cat starts a new game.
+    ccAbort("A new cat, a new tune. Press play when you are ready.");
+    if (show.kind === "copycat") clearShow();
+    bubbleIdle();
+    return;
+  }
   if (show.kind === "monologue") clearShow();
   if (show.kind === "mockery") bubble.querySelector(".who").textContent = roster.get(id).name;
   else if (live.mode !== "thinking") bubbleIdle();
@@ -1670,6 +1762,436 @@ sayText.addEventListener("blur", () => { live.reading = false; });
 
 $("speak").addEventListener("click", () => talk(chosen || "random"));
 $("random").addEventListener("click", () => talk("random"));
+
+// ---------- copycat ----------
+// The cat sings a phrase on stage, you sing it back, the server scores it. Each win adds one
+// meow; a miss ends the run. Only your best run is kept, in this browser, and nothing else.
+const ccGo = $("cc-go"), ccRec = $("cc-rec"), ccRecLabel = $("cc-rec-label"), ccAgain = $("cc-again");
+const ccStatus = $("cc-status"), ccRound = $("cc-round"), ccRing = $("cc-ring"), ccSection = $("copycat");
+const ccSfx = $("cc-sfx");
+const CC_START = 2, CC_MAX = 12, CC_BEST_KEY = "meow-now:copycat-best";
+const VERDICT_TEXT = {
+  good: "Spot on", higher: "Too high", lower: "Too low", early: "Early", late: "Late",
+  shape: "Wrong shape", unvoiced: "No tune", missed: "Missed",
+};
+// Spoken in the round summary, where the chip's picture is not there to help.
+const VERDICT_SAID = { ...VERDICT_TEXT, shape: "the wrong shape", unvoiced: "no tune heard" };
+const WIN_LINES = ["Purrfect.", "Nailed it.", "Show-off.", "Again, but longer."];
+const LOSE_LINES = ["Mrrp. Not quite.", "The cat is unimpressed.", "Close. Not close enough.", "Was that a meow?"];
+// Small authored icons, one stroke weight, so each chip reads at a glance.
+const VERDICT_ICON = {
+  good: "M5 12.5 9.5 17 19 7.5",
+  higher: "M12 19V5m0 0-6 6m6-6 6 6",
+  lower: "M12 5v14m0 0-6-6m6 6 6-6",
+  early: "M19 12H5m0 0 6-6m-6 6 6 6",
+  late: "M5 12h14m0 0-6-6m6 6-6 6",
+  shape: "M3 14c3-7 6-7 9 0s6 7 9 0",
+  unvoiced: "M4 12h3m3 0h4m3 0h3",
+  missed: "M7 7l10 10M17 7 7 17",
+};
+
+const cc = {
+  state: "idle",  // idle | loading | performing | ready | recording | scoring | won | lost
+  seed: 0, length: CC_START, phrase: null, best: 0, won: 0, sfx: { win: null, lose: null },
+  take: null,  // the recording in progress
+};
+
+function readBest() {
+  try { return Math.max(0, parseInt(localStorage.getItem(CC_BEST_KEY) || "0", 10) || 0); }
+  catch (err) { return 0; }  // storage blocked (private mode, a sandbox): no best, no harm
+}
+
+function saveBest(n) {
+  try { localStorage.setItem(CC_BEST_KEY, String(n)); } catch (err) { /* kept for this visit only */ }
+}
+
+function showBest() {
+  $("cc-best").hidden = cc.best < 1;
+  $("cc-best-n").textContent = String(cc.best);
+}
+
+function ccQuery() {
+  return "?seed=" + cc.seed + "&length=" + cc.length + (chosen ? "&cat=" + encodeURIComponent(chosen) : "");
+}
+
+function ccSet(state) {
+  cc.state = state;
+  const busy = state === "loading" || state === "performing" || state === "scoring";
+  ccGo.hidden = state === "ready" || state === "recording";
+  ccGo.disabled = busy;
+  ccGo.textContent = state === "won" ? "Next: " + Math.min(cc.length + 1, CC_MAX) + " meows"
+    : state === "lost" ? "Play again" : "Play Copycat";
+  ccRec.hidden = ccAgain.hidden = !(state === "ready" || state === "recording");
+  ccAgain.disabled = state === "recording";
+  ccRecLabel.textContent = state === "recording" ? "Done" : "Your turn";
+  ccSection.classList.toggle("recording", state === "recording");
+  trackEl.toggleAttribute("data-turn", state === "recording");
+}
+
+// The y axis zooms to the phrase, so a few semitones of tune fill the ribbon.
+function ccScale(meows) {
+  let lo = Infinity, hi = 0;
+  for (const m of meows) for (const c of m.contour) { lo = Math.min(lo, m.pitch_hz * c); hi = Math.max(hi, m.pitch_hz * c); }
+  lo /= 1.45; hi *= 1.2;
+  // The top stays clear for the legend.
+  return (hz) => RH - 10 - (Math.log(clamp(hz, lo, hi) / lo) / Math.log(hi / lo)) * (RH - 40);
+}
+
+function ccRibbon(phrase, heard = null) {
+  const total = phrase.duration, y = ccScale(phrase.meows);
+  const sx = (t) => clamp(t / total, 0, 1) * RW;
+  let art = "";
+  for (const m of phrase.meows) {
+    const steps = 20, up = [], down = [];
+    for (let j = 0; j <= steps; j++) {
+      const u = j / steps, x = sx(m.start + m.duration * u), yy = y(m.pitch_hz * follow(m.contour, u));
+      const hw = 1 + 6 * Math.pow(Math.sin(Math.PI * u), 0.6);
+      up.push(pt(x, yy - hw));
+      down.unshift(pt(x, yy + hw));
+    }
+    art += `<path class="cc-target" d="M${up.join("L")}L${down.join("L")}Z"/>`;
+  }
+  for (const h of heard || []) {
+    if (!h.heard) continue;
+    const { start, duration, pitch_hz: hz, contour } = h.heard;
+    const off = h.verdict !== "good" ? " off" : "";
+    if (!hz || !contour.length) {
+      const yy = y(phrase.meows[0].pitch_hz).toFixed(1);
+      art += `<path class="cc-heard unvoiced${off}" d="M${sx(start).toFixed(1)} ${yy}H${sx(start + duration).toFixed(1)}"/>`;
+      continue;
+    }
+    const d = contour.map((c, j) => pt(sx(start + duration * (j / (contour.length - 1))), y(hz * c))).join("L");
+    art += `<path class="cc-heard${off}" d="M${d}"/>`;
+  }
+  setRibbon("copycat", art, !heard);
+  return y;
+}
+
+// While you sing, your pitch draws over the cat's: your first sound lands on its first meow,
+// and your voice is moved into its register, the way the scorer will hear it.
+function ccDrawLive(take, y) {
+  const p = cc.phrase, sx = (t) => (t / p.duration) * RW;
+  const voiced = take.pts.filter((q) => q.hz);
+  if (!voiced.length) { traceEl.setAttribute("d", ""); return; }
+  const t0 = voiced[0].t, first = voiced.slice(0, 6).map((q) => q.hz).sort((a, b) => a - b);
+  const k = p.meows[0].pitch_hz / first[Math.floor(first.length / 2)];
+  let d = "", pen = false, last = -1;
+  for (const q of take.pts) {
+    if (q.t < t0) continue;
+    const x = sx(p.meows[0].start + q.t - t0);
+    if (q.hz && x <= RW) {
+      d += (pen && q.t - last < 0.08 ? "L" : "M") + pt(x, y(q.hz * k));
+      pen = true; last = q.t;
+    } else pen = false;
+  }
+  traceEl.setAttribute("d", d);
+}
+
+async function ccFetchSfx(phrase) {
+  // A happy trill for a win, a disappointed mrrp for a miss: real synthesized meows, fetched
+  // up front so they land on the beat of the verdict.
+  const home = phrase.meows[0].pitch_hz;
+  const get = async (pitch, duration, seed) => {
+    const res = await fetch(`/api/meow?kind=mrrp&pitch=${clamp(pitch, 200, 1500).toFixed(0)}&duration=${duration}&seed=${seed}`);
+    if (!res.ok) throw new Error("no sound");
+    return URL.createObjectURL(await res.blob());
+  };
+  for (const url of Object.values(cc.sfx)) if (url) URL.revokeObjectURL(url);
+  cc.sfx = { win: null, lose: null };
+  try {
+    const [win, lose] = await Promise.all([get(home * 1.4, 0.32, 7), get(home * 0.62, 0.55, 3)]);
+    cc.sfx = { win, lose };
+  } catch (err) { /* the verdict still shows; it is just quieter */ }
+}
+
+function ccPlaySfx(kind) {
+  const url = cc.sfx[kind];
+  if (!url) return;
+  ccSfx.src = url;
+  ccSfx.play().then(() => {
+    live.sfx = { start: 0, t0: performance.now() / 1000, dur: kind === "win" ? 0.32 : 0.55, kind: "mrrp", gape: kind === "win" ? 1 : 0.6 };
+  }).catch(() => {});
+}
+
+function meowName(kind, i, n) {
+  const w = { mew: "mew", mrrp: "mrrp" }[kind] || "meow";
+  return (i === 0 ? w[0].toUpperCase() + w.slice(1) : w) + (i === n - 1 ? "." : "");
+}
+
+async function ccStart() {
+  if (recorder && recorder.state === "recording") { setStatus(ccStatus, "Finish talking to the cat first."); return; }
+  if (cc.state === "idle" || cc.state === "lost") {
+    cc.seed = Math.floor(Math.random() * 2 ** 30);
+    cc.length = CC_START;
+    cc.won = 0;
+  } else if (cc.state === "won") {
+    cc.length = Math.min(cc.length + 1, CC_MAX);
+  }
+  ccSet("loading");
+  setStatus(ccStatus, "The cat is warming up...");
+  ccRound.textContent = "";
+  live.mode = "thinking";
+  live.mood = null;
+  bubbleThinking();
+  try {
+    const res = await fetch("/api/copycat/phrase" + ccQuery());
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error((data && data.detail) || "request failed: " + res.status);
+    if (cc.state !== "loading") return;  // abandoned while it loaded
+    cc.phrase = data;
+    if (cc.length === CC_START || !cc.sfx.win) ccFetchSfx(data);
+    live.mode = "idle";
+    ccPerform();
+  } catch (err) {
+    live.mode = "idle";
+    ccSet("idle");
+    setStatus(ccStatus, "The cat lost its voice: " + err.message, true);
+    bubbleIdle();
+  }
+}
+
+function ccPerform() {
+  const p = cc.phrase, n = p.meows.length;
+  const cat = roster.get(chosen), name = cat ? cat.name : "The cat";
+  ccSet("performing");
+  setStatus(ccStatus, "Listen...");
+  ccRound.textContent = "Round " + (cc.won + 1) + ": " + n + " meows";
+  const words = p.meows.map((m, i) => meowName(m.kind, i, n));
+  const wordEls = bubbleWords("copycat", name, words, "Copy this.");
+  ccRibbon(p);
+  nowShowing.textContent = "Copycat, round " + (cc.won + 1);
+  loadShow(ccAudio, p.audio, {
+    kind: "copycat", duration: p.duration, title: "Copycat, round " + (cc.won + 1), wordEls,
+    words: p.meows.map((m) => ({ start: m.start })),
+    events: p.meows.map((m) => ({ start: m.start, dur: m.duration, kind: m.kind, gape: 0.9 })),
+    keep: { filename: clipName(name, "copycat", n + " meows"), name, title: name + " plays Copycat", text: "Can you copy " + name + "? " + n + " meows." },
+  });
+  announce(name + " sings " + n + " meows. Then it is your turn.");
+}
+
+// After the cat sings, it is your turn: keyboard users land on the button that starts it.
+ccAudio.addEventListener("ended", () => {
+  if (cc.state !== "performing" || show.audio !== ccAudio) return;
+  ccSet("ready");
+  setStatus(ccStatus, "Your turn. Press it, then sing it back.");
+  bubbleNote("listening", "Your turn.");
+  ccRec.focus({ preventScroll: true });
+});
+
+async function ccRecord() {
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    setStatus(ccStatus, "This browser cannot record here (HTTPS is required for the microphone).", true);
+    return;
+  }
+  let micStream;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    setStatus(ccStatus, "No microphone: " + err.message, true);
+    return;
+  }
+  if (show.audio) show.audio.pause();
+  const p = cc.phrase, y = ccScale(p.meows);
+  const chunks = [], rec = new MediaRecorder(micStream);
+  const actx = new (window.AudioContext || window.webkitAudioContext)();
+  const analyser = actx.createAnalyser();
+  analyser.fftSize = 2048;
+  actx.createMediaStreamSource(micStream).connect(analyser);
+  const buf = new Float32Array(analyser.fftSize);
+  // You have about twice the phrase to sing it, and it stops by itself once you go quiet.
+  const limit = Math.min(28, p.duration * 2 + 2.5), began = performance.now() / 1000;
+  const take = { rec, pts: [], lastVoice: 0, raf: 0 };
+  cc.take = take;
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = async () => {
+    cancelAnimationFrame(take.raf);
+    micStream.getTracks().forEach((t) => t.stop());
+    actx.close();
+    live.level = 0;
+    live.mode = "idle";
+    ccRec.style.setProperty("--lvl", "0");
+    ccRing.style.strokeDashoffset = "1";
+    if (cc.take !== take) return;  // abandoned
+    cc.take = null;
+    await ccScore(new Blob(chunks, { type: rec.mimeType }));
+  };
+  let lastHz = null;
+  const tick = () => {
+    if (rec.state !== "recording") return;
+    analyser.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (const x of buf) sum += x * x;
+    const level = clamp(Math.sqrt(sum / buf.length) * 6, 0, 1);
+    live.level += (level - live.level) * (level > live.level ? 0.5 : 0.12);
+    ccRec.style.setProperty("--lvl", live.level.toFixed(3));
+    const raw = detectPitch(buf, actx.sampleRate);
+    const hz = raw && lastHz && Math.abs(Math.log(raw / lastHz)) < 0.4 ? lastHz * 0.4 + raw * 0.6 : raw;
+    lastHz = hz;
+    const now = performance.now() / 1000 - began;
+    if (hz) take.lastVoice = now;
+    take.pts.push({ t: now, hz });
+    ccDrawLive(take, y);
+    timeEl.textContent = fmt(now) + " / " + fmt(limit);
+    ccRing.style.strokeDashoffset = String(clamp(1 - now / limit, 0, 1));
+    const sung = take.pts.some((q) => q.hz);
+    const span = p.meows[p.meows.length - 1].start - p.meows[0].start;
+    if (now >= limit || (sung && now - take.lastVoice > 1.2 && now > span * 0.7 + 0.6)) { rec.stop(); return; }
+    take.raf = requestAnimationFrame(tick);
+  };
+  rec.start();
+  ccSet("recording");
+  live.mode = "listening";
+  setStatus(ccStatus, "");
+  nowShowing.textContent = "Your turn";
+  bubbleNote("listening", "Go on. I'm listening.");
+  tick();
+}
+
+async function ccScore(blob) {
+  ccSet("scoring");
+  setStatus(ccStatus, "The cat is judging...");
+  live.mode = "thinking";
+  bubbleThinking();
+  try {
+    const samples = await toMono16k(await blob.arrayBuffer());
+    const data = await postJson("/api/copycat/score" + ccQuery(), encodeWav(samples, TARGET_RATE), { "Content-Type": "audio/wav" });
+    if (cc.state !== "scoring") return;
+    live.mode = "idle";
+    ccVerdict(data);
+  } catch (err) {
+    live.mode = "idle";
+    ccSet("ready");
+    setStatus(ccStatus, "Could not judge that: " + err.message + ". Try again.", true);
+    bubbleNote("listening", "Again?");
+  }
+}
+
+function ccVerdict(data) {
+  const p = cc.phrase, n = p.meows.length, round = cc.won + 1;
+  const cat = roster.get(chosen), name = cat ? cat.name : "The cat";
+  const won = !!data.passed;
+  ccRibbon(p, data.meows);
+  // The bubble: the score counting up, the cat's line, and a chip per meow.
+  bubbleStart("copycat-verdict", name);
+  const head = document.createElement("span");
+  head.className = "cc-verdict";
+  const num = document.createElement("span");
+  num.className = "cc-score";
+  num.textContent = "0";
+  const of = document.createElement("span");
+  of.className = "cc-of";
+  of.textContent = "/ 100";
+  const line = document.createElement("span");
+  line.className = "cc-say tag";
+  const lines = won ? WIN_LINES : LOSE_LINES;
+  line.textContent = lines[(cc.seed + round) % lines.length];
+  head.append(num, of, line);
+  const list = document.createElement("ol");
+  list.className = "chips";
+  list.setAttribute("aria-label", "How each meow went");
+  const chips = data.meows.map((m, i) => {
+    const li = document.createElement("li");
+    li.className = "chip";
+    li.dataset.v = m.verdict;
+    const k = document.createElement("span");
+    k.className = "n";
+    k.textContent = String(i + 1);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", VERDICT_ICON[m.verdict] || VERDICT_ICON.missed);
+    for (const [a, v] of [["fill", "none"], ["stroke", "currentColor"], ["stroke-width", "2.4"], ["stroke-linecap", "round"], ["stroke-linejoin", "round"]]) path.setAttribute(a, v);
+    svg.appendChild(path);
+    li.append(k, svg, document.createTextNode(VERDICT_TEXT[m.verdict] || m.verdict));
+    list.appendChild(li);
+    return li;
+  });
+  bubble.append(head, list);
+  popBubble();
+  revealStage();
+
+  const quiet = reduceMotion.matches;
+  if (quiet) num.textContent = String(data.score);
+  else {
+    const t0 = performance.now(), dur = 700;
+    const step = (now) => {
+      const u = clamp((now - t0) / dur, 0, 1);
+      num.textContent = String(Math.round(data.score * (1 - Math.pow(1 - u, 3))));
+      if (u < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+  chips.forEach((c, i) => c.animate(
+    quiet ? [{ opacity: 0 }, { opacity: 1 }]
+      : [{ opacity: 0, transform: "translateY(5px) scale(0.94)" }, { opacity: 1, transform: "none" }],
+    { duration: 260, delay: 180 + i * 55, easing: "cubic-bezier(0.23, 1, 0.32, 1)", fill: "backwards" },
+  ));
+
+  // The moment itself: a trill and a hop for a win, a disappointed mrrp and a slump for a miss.
+  live.mood = { kind: won ? "happy" : "sad", until: performance.now() + (won ? 1400 : 2000) };
+  setTimeout(() => ccPlaySfx(won ? "win" : "lose"), quiet ? 0 : 260);
+  if (!quiet) {
+    catWrap.animate(won ? [
+      { transform: "none" },
+      { transform: "translateY(0) scale(1.06, 0.93)", offset: 0.15 },
+      { transform: "translateY(-30px) scale(0.96, 1.05)", offset: 0.45 },
+      { transform: "translateY(0) scale(1.04, 0.96)", offset: 0.78 },
+      { transform: "none" },
+    ] : [
+      { transform: "none" },
+      { transform: "scale(1.03, 0.95)", offset: 0.35 },
+      { transform: "scale(1.02, 0.97)", offset: 0.75 },
+      { transform: "none" },
+    ], { duration: won ? 560 : 900, delay: 240, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+  }
+
+  const said = data.meows.map((m, i) => "meow " + (i + 1) + " " + (VERDICT_SAID[m.verdict] || m.verdict).toLowerCase()).join(", ");
+  const extra = data.extra ? " Plus " + data.extra + (data.extra === 1 ? " meow" : " meows") + " too many." : "";
+  if (won) {
+    cc.won = round;
+    if (n > cc.best) {
+      cc.best = n;
+      saveBest(n);
+      showBest();
+      toast(n >= CC_MAX ? "A perfect run. " + name + " has nothing left to teach you." : "New best: " + n + " meows.");
+    }
+    ccSet(n >= CC_MAX ? "lost" : "won");
+    setStatus(ccStatus, n >= CC_MAX ? "That was the longest tune there is. Start again?" : "Copied. Ready for " + (n + 1) + "?");
+  } else {
+    ccSet("lost");
+    setStatus(ccStatus, cc.won ? "That ends the run: " + cc.won + (cc.won === 1 ? " round" : " rounds") + " copied." : "That one got away. Try a fresh tune.");
+  }
+  ccRound.textContent = "Round " + round + ": " + data.score + " out of 100";
+  nowShowing.textContent = "Copycat: " + data.score;
+  announce("Round " + round + ": " + data.score + " out of 100. " + (won ? "You copied it." : "Not quite.") + " " + said + "." + extra);
+}
+
+function ccAbort(note = "") {
+  if (cc.state === "idle") return;
+  const take = cc.take;
+  cc.take = null;
+  if (take && take.rec.state === "recording") take.rec.stop();
+  cc.state = "idle";  // before ccSet, so a phrase or score still in flight is ignored
+  live.mood = null;
+  ccSet("idle");
+  ccRound.textContent = "";
+  setStatus(ccStatus, note);
+}
+
+ccGo.addEventListener("click", ccStart);
+ccAgain.addEventListener("click", () => {
+  if (cc.state !== "ready" || show.audio !== ccAudio) return;
+  ccAudio.currentTime = 0;
+  ccAudio.play().catch(() => syncPlayer());
+});
+ccRec.addEventListener("click", () => {
+  if (cc.state === "recording" && cc.take) cc.take.rec.stop();
+  else if (cc.state === "ready") ccRecord();
+});
+
+cc.best = readBest();
+showBest();
 
 // ---------- shared links: /?cat=<id>&seed=<n> ----------
 function forgetLink() {
