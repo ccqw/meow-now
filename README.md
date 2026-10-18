@@ -83,7 +83,7 @@ MediaRecorder (webm/opus, mp4, ...)
                                                              voice pitch -> cat pitch
                                                            meows.py
                                                              one synthesized meow per syllable
-  <audio> plays the result  <---- WAV (base64 JSON) -----
+  <audio> plays the result  <---- 24 kHz WAV (base64 JSON)
 ```
 
 - **No ffmpeg on the server.** The browser decodes whatever it recorded and
@@ -106,14 +106,28 @@ MediaRecorder (webm/opus, mp4, ...)
   least 0.15 s and its contour ends at least 12% above its first half, the cat
   mirrors the question, pauses 0.6 s and adds one flat, falling meow
   (`question`). Only one reaction applies, in that order of priority.
-- **Meows** are additive synthesis: a stack of harmonics on a rising and falling
-  pitch track, each harmonic weighted by its distance to formants that glide
-  through "m-ee-aa-oo", under an envelope that opens from a nasal "m". There
-  are four kinds (`mew`, `meow`, `mrrp` with a rolled start, and a wavering
-  `yowl`), chosen by duration. Synthesis is deterministic for a given seed.
+- **Meows** are source-filter synthesis at 24 kHz (recordings are analyzed at
+  16 kHz, which is plenty for speech pitch). The source is a stack of
+  harmonics on a rising and falling pitch track, with about 1% pitch jitter,
+  amplitude shimmer and, on meows over 0.4 s, a 5 to 6 Hz vibrato of random
+  depth. Each harmonic is weighted by five formants that glide through
+  "m-ee-aa-oo", with a nasal anti-formant on the opening "m". Breath noise,
+  pulsed with each glottal cycle, goes through the same formants: loudest on
+  the attack and release, with a little throughout. There are four kinds of
+  meow (`mew`, `meow`, `mrrp` with a rolled start, and a wavering `yowl`),
+  chosen by duration. Synthesis is deterministic for a given seed.
+- **Purrs** are 20 to 30 Hz laryngeal pulses rung through the closed-mouth
+  formants, so the purr carries energy at a few hundred Hz to a few kHz and
+  reads even on a phone speaker. They rise and fall with a slow in-and-out
+  breath.
 - **Talkative cats** speak one meow per word, sized by word length and paced
   by the cat's tempo, with pauses at punctuation and rising contours on
   questions. The server returns each word's start time for the subtitles.
+  Each cat also has its own voice: Mittens is a big tom with a low, growly
+  voice (lower formants and subharmonics) who grumbles in `mrrp`s; Professor
+  Whiskers is airy and given to the odd purr; Biscuit is small, breathy and
+  high, and mews; the Duchess is clear and bright with an operatic vibrato,
+  and yowls.
 
 ## API
 
@@ -125,7 +139,7 @@ Interactive docs are served at `/api/docs`.
 | `GET /api/cats` | | The cats, and whether Ollama is configured |
 | `POST /api/mockery` | A PCM WAV file as the raw body (`Content-Type: audio/wav`), at least 8 kHz, any channels; only the first 60 s are used. Optional `?seed=` (0 or more) makes the result reproducible | `{"audio": "data:audio/wav;base64,...", "seed", "input_seconds", "truncated", "meows": [{start, duration, pitch_hz, your_pitch_hz, kind, contour, loudness}]}`. `contour` is the syllable's pitch over its median pitch through time (empty when unvoiced); `loudness` is 0 to 1, relative to the loudest syllable. Also `"reaction"`: `none`, `silent`, `question` or `bored`; `"caption"`: a short line about the reaction for display, or `null` for `none`; and `"reaction_meows": [{start, duration, pitch_hz, kind}]`, the extra meows the reaction added (not tied to a syllable). A silent recording is not an error: it returns 200 with `reaction: "silent"` and no `meows` |
 | `POST /api/cats/{id}/monologue` | `id` is `grumpy`, `wise`, `anxious`, `diva` or `random`; optional `?seed=` | `{"cat", "text", "source": "ollama" or "builtin", "words": [{word, start}], "audio"}` |
-| `GET /api/meow` | `pitch` (200 to 1500 Hz), `duration` (0.08 to 2 s), `kind`, `seed` | One meow as `audio/wav` |
+| `GET /api/meow` | `pitch` (200 to 1500 Hz), `duration` (0.08 to 2 s), `kind` (`mew`, `meow`, `mrrp`, `yowl` or `purr`), `seed`. For a purr, `pitch` sets the pulse rate within 20 to 30 Hz (600 gives 25 Hz) | One meow (or purr) as `audio/wav` |
 
 Examples:
 
@@ -134,7 +148,10 @@ curl -s -X POST --data-binary @hello.wav -H 'Content-Type: audio/wav' \
   http://localhost:8080/api/mockery | jq '.meows | length'
 
 curl -s -o meow.wav 'http://localhost:8080/api/meow?pitch=800&duration=0.6&kind=mrrp'
+curl -s -o purr.wav 'http://localhost:8080/api/meow?duration=2&kind=purr'
 ```
+
+All audio the server returns is 24 kHz mono 16-bit WAV.
 
 Errors are JSON `{"detail": ...}` with status 400 (empty body), 404 (unknown
 cat), 413 (too large), 415 (not a readable WAV, or below 8 kHz) or 422 (bad
@@ -208,7 +225,7 @@ Layout:
 meow_now/
   audio.py      WAV decode/encode, resampling
   analysis.py   syllables, pitch and contour
-  meows.py      meow synthesis and mixing
+  meows.py      meow and purr synthesis, and mixing
   mockery.py    Meow Mockery: speech -> meows
   cats.py       Talkative Cats: personalities, Ollama, cat speech
   web.py        FastAPI app

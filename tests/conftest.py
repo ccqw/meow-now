@@ -56,3 +56,32 @@ def speech_like(pitches, syllable_s=0.25, gap_s=0.15, rate: int = RATE) -> np.nd
 @pytest.fixture
 def rng():
     return np.random.default_rng(1234)
+
+
+def band_fraction(samples: np.ndarray, rate: int, lo: float, hi: float) -> float:
+    """Fraction of the clip's energy between lo and hi Hz."""
+    power = np.abs(np.fft.rfft(samples)) ** 2
+    freqs = np.fft.rfftfreq(len(samples), 1 / rate)
+    return float(power[(freqs >= lo) & (freqs < hi)].sum() / power.sum())
+
+
+def spectral_centroid(samples: np.ndarray, rate: int) -> float:
+    """Power-weighted mean frequency in Hz: higher means brighter."""
+    power = np.abs(np.fft.rfft(samples)) ** 2
+    freqs = np.fft.rfftfreq(len(samples), 1 / rate)
+    return float((power * freqs).sum() / power.sum())
+
+
+def cat_pitch_track(samples: np.ndarray, rate: int) -> np.ndarray:
+    """Pitch per 10 ms frame (0 where unvoiced), from the analysis module's own tracker.
+
+    Its ceiling suits human speech, so it is raised to cover cat pitch for
+    this one call only: anything analyzing speech meanwhile is unaffected.
+    """
+    from meow_now import analysis
+    from meow_now.audio import ANALYSIS_RATE, resample
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(analysis, "MAX_PITCH_HZ", 1500.0)
+        pitch = analysis.frame_pitch(resample(samples, rate, ANALYSIS_RATE), ANALYSIS_RATE)
+    return pitch.astype(np.float64)

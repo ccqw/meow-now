@@ -3,6 +3,11 @@
 Everything inside the app is mono float32 in [-1, 1]. Only 16-bit PCM WAV
 crosses the wire: the browser decodes whatever it recorded and sends WAV, so
 the server never needs ffmpeg.
+
+Two sample rates are in play. Recordings are analyzed at ANALYSIS_RATE,
+which is plenty for speech pitch and keeps analysis cheap. Everything the app
+renders is synthesized at SAMPLE_RATE, high enough to carry the breath and
+upper harmonics of a meow above 8 kHz.
 """
 
 from __future__ import annotations
@@ -12,7 +17,8 @@ import wave
 
 import numpy as np
 
-SAMPLE_RATE = 16_000
+SAMPLE_RATE = 24_000  # Hz, of every clip the app synthesizes and sends back
+ANALYSIS_RATE = 16_000  # Hz, recordings are resampled to this before analysis
 
 
 class AudioError(ValueError):
