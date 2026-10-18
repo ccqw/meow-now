@@ -1,0 +1,117 @@
+# Example manifests for running meow-now on any Kubernetes cluster.
+#
+#   kubectl apply -f deploy/kubernetes/meow-now.yaml
+#
+# Replace the two placeholders first:
+#   IMAGE      your published image, ideally pinned by digest:
+#              ghcr.io/<owner>/meow-now:sha-<commit>@sha256:<digest>
+#   HOSTNAME   the name your ingress serves, e.g. meow.example.com
+#
+# The browser only allows microphone access over HTTPS (or on localhost), so
+# terminate TLS in front of this Service. Recording and playback still work
+# without it, but the "Start talking" button will not.
+#
+# meow-now keeps no state: nothing is written to disk and any number of
+# replicas can serve requests.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: meow-now
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meow-now
+  namespace: meow-now
+  labels:
+    app: meow-now
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: meow-now
+  template:
+    metadata:
+      labels:
+        app: meow-now
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: meow-now
+          image: IMAGE
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Optional: an Ollama server for improvised monologues.
+            - name: OLLAMA_URL
+              value: ""
+            - name: OLLAMA_MODEL
+              value: llama3.2
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: "1"
+              memory: 384Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: meow-now
+  namespace: meow-now
+spec:
+  selector:
+    app: meow-now
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Any ingress controller works; this one assumes ingress-nginx and a TLS
+# Secret (for example from cert-manager) named meow-now-tls.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: meow-now
+  namespace: meow-now
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 8m
+spec:
+  tls:
+    - hosts: [HOSTNAME]
+      secretName: meow-now-tls
+  rules:
+    - host: HOSTNAME
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: meow-now
+                port:
+                  name: http
