@@ -1,3 +1,4 @@
+import asyncio
 import base64
 
 import pytest
@@ -50,6 +51,39 @@ def test_mockery_rejects_bad_input(client):
     assert client.post("/api/mockery", content=too_big).status_code == 413
     low_rate = encode_wav(speech_like([150], rate=4000), 4000)
     assert client.post("/api/mockery", content=low_rate).status_code == 415
+
+
+def test_mockery_stops_reading_a_chunked_upload_past_the_limit():
+    settings = Settings(ollama_url=None, ollama_model="x", max_upload_bytes=1024)
+    app = create_app(settings)
+    chunk, available, calls, sent = b"\0" * 256, 1000, 0, []
+
+    async def receive():
+        nonlocal calls
+        calls += 1
+        return {"type": "http.request", "body": chunk, "more_body": calls < available}
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/mockery",
+        "raw_path": b"/api/mockery",
+        "root_path": "",
+        "query_string": b"",
+        "headers": [(b"content-type", b"audio/wav"), (b"transfer-encoding", b"chunked")],
+        "client": ("testclient", 50000),
+        "server": ("testserver", 80),
+    }
+    asyncio.run(app(scope, receive, send))
+    assert sent[0]["type"] == "http.response.start"
+    assert sent[0]["status"] == 413
+    assert calls < 20
 
 
 def test_monologue(client):
