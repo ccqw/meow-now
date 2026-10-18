@@ -17,7 +17,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<9", "ruff>=0.6"]
+# httpx2: Starlette's TestClient moved to it and warns when it falls back to httpx.
+# The app itself still uses httpx (for Ollama), so this is a test-only dependency.
+dev = ["pytest>=8,<9", "ruff>=0.6", "httpx2>=2,<3"]
 browser = ["pytest-playwright>=0.5,<1"]
 
 [project.scripts]
@@ -34,6 +36,8 @@ meow_now = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A new deprecation should fail the suite, not scroll past in the summary.
+filterwarnings = ["error"]
 
 [tool.ruff]
 line-length = 100

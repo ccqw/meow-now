@@ -334,18 +334,30 @@ def speak(cat: Cat, text: str, seed: int = 0) -> tuple[np.ndarray, tuple[tuple[s
     return audio, tuple(timing)
 
 
+def monologue_text(
+    cat: Cat,
+    seed: int = 0,
+    ollama_url: str | None = None,
+    ollama_model: str = "llama3.2",
+) -> tuple[str, str]:
+    """What the cat will say and where it came from ("ollama" or "builtin"). No synthesis."""
+    if ollama_url:
+        text = ask_ollama(cat, ollama_url, ollama_model)
+        if text:
+            return text, "ollama"
+    return cat.lines[seed % len(cat.lines)], "builtin"
+
+
+def render_monologue(cat: Cat, text: str, source: str, seed: int = 0) -> Monologue:
+    audio, words = speak(cat, text, seed=seed)
+    return Monologue(cat=cat, text=text, source=source, audio=audio, words=words)
+
+
 def monologue(
     cat: Cat,
     seed: int = 0,
     ollama_url: str | None = None,
     ollama_model: str = "llama3.2",
 ) -> Monologue:
-    text, source = None, "builtin"
-    if ollama_url:
-        text = ask_ollama(cat, ollama_url, ollama_model)
-        if text:
-            source = "ollama"
-    if not text:
-        text = cat.lines[seed % len(cat.lines)]
-    audio, words = speak(cat, text, seed=seed)
-    return Monologue(cat=cat, text=text, source=source, audio=audio, words=words)
+    text, source = monologue_text(cat, seed, ollama_url, ollama_model)
+    return render_monologue(cat, text, source, seed)

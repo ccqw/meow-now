@@ -55,13 +55,37 @@ def server_url():
             thread.join(timeout=10)
 
 
+# Records every CSP violation the page reports, including ones that only show up as an event.
+CSP_RECORDER = """
+window.__cspViolations = [];
+document.addEventListener("securitypolicyviolation", (e) => {
+  window.__cspViolations.push(e.violatedDirective + " " + (e.blockedURI || "inline"));
+});
+"""
+
+
+def _csp_violations(page: Page, console: list[str]) -> list[str]:
+    reported = page.evaluate("window.__cspViolations")
+    return reported + [m for m in console if "Content Security Policy" in m]
+
+
 @pytest.fixture
-def home(page: Page, server_url):
-    errors = []
+def watched(page: Page, server_url):
+    """The page, loaded, with page errors and CSP console messages collected."""
+    errors, console = [], []
     page.on("pageerror", lambda exc: errors.append(str(exc)))
+    page.on("console", lambda msg: console.append(msg.text))
+    page.add_init_script(CSP_RECORDER)
     page.goto(server_url + "/")
+    return page, errors, console
+
+
+@pytest.fixture
+def home(watched):
+    page, errors, console = watched
     yield page
     assert errors == []
+    assert _csp_violations(page, console) == []
 
 
 def test_page_loads_and_lists_cats(home: Page):
@@ -126,3 +150,21 @@ def test_talkative_cat_plays_with_subtitles(home: Page):
     # Playback drives the word highlighting, so a lit word means the audio really played.
     expect(subtitle.locator(".w.said").first).to_be_visible(timeout=15000)
     expect(home.locator("#speak")).to_be_enabled()
+
+
+def test_csp_is_enforced_and_violations_are_caught(watched):
+    page, _, console = watched
+    csp = page.request.get(page.url).headers["content-security-policy"]
+    assert "'nonce-" in csp and "unsafe-inline" not in csp
+    # An inline script without the page's nonce must be refused, and the check above must see it.
+    page.evaluate(
+        """() => {
+          const s = document.createElement("script");
+          s.textContent = "window.__ran = true";
+          document.body.append(s);
+        }"""
+    )
+    expect(page.locator("body")).to_be_visible()
+    page.wait_for_function("window.__cspViolations.length > 0")
+    assert page.evaluate("window.__ran === undefined")
+    assert any("script-src" in v for v in _csp_violations(page, console))

@@ -26,10 +26,15 @@ def main(argv: list[str] | None = None) -> int:
     convert.add_argument("output", type=Path)
 
     args = parser.parse_args(argv)
-    logging.basicConfig(
-        level=os.environ.get("LOG_LEVEL", "INFO").upper(),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    if args.command == "mock":
+        logging.basicConfig(level=level, format="%(levelname)s %(name)s %(message)s")
+    else:
+        from meow_now.middleware import JsonFormatter
+
+        handler = logging.StreamHandler()
+        handler.setFormatter(JsonFormatter())
+        logging.basicConfig(level=level, handlers=[handler])
 
     if args.command == "mock":
         from meow_now.audio import decode_wav, encode_wav
@@ -47,7 +52,16 @@ def main(argv: list[str] | None = None) -> int:
 
     host = getattr(args, "host", os.environ.get("HOST", DEFAULT_HOST))
     port = getattr(args, "port", int(os.environ.get("PORT", "8080")))
-    uvicorn.run(create_app(), host=host, port=port, proxy_headers=True)
+    # uvicorn's own access log includes the client address; ours (JSON, no address)
+    # replaces it, and log_config=None sends uvicorn's other logs through the JSON handler.
+    uvicorn.run(
+        create_app(),
+        host=host,
+        port=port,
+        proxy_headers=True,
+        access_log=False,
+        log_config=None,
+    )
     return 0
 
 
