@@ -177,6 +177,22 @@ ruff check . && ruff format --check .
 CI ([`.github/workflows/test.yml`](.github/workflows/test.yml)) runs the same
 commands on Python 3.11, 3.12 and 3.13.
 
+### Browser smoke test
+
+`tests/browser` drives the real page in headless Chromium against a live local
+server, with a fake microphone: it checks that the cats load, that recording
+and stopping returns a mockery with audio and bars, and that a monologue plays
+with subtitles. It needs Playwright and a browser, so plain `pytest` skips it.
+To run it:
+
+```sh
+pip install -e '.[dev,browser]'
+python -m playwright install chromium   # add --with-deps on Linux
+pytest -v --browser-smoke tests/browser
+```
+
+Add `--headed` to watch it. CI runs it as a separate `browser` job.
+
 Layout:
 
 ```
@@ -190,6 +206,7 @@ meow_now/
   static/       the single-page UI (no build step, no frameworks)
   __main__.py   `meow-now serve` and `meow-now mock`
 tests/          pytest suite (synthetic speech, no fixtures on disk)
+  browser/      headless Chromium smoke test (opt in with --browser-smoke)
 deploy/         example Kubernetes manifests
 ```
 
