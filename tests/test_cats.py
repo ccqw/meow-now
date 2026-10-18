@@ -247,3 +247,12 @@ def test_speak_uses_the_cats_voice(monkeypatch, cat_id):
 def test_voice_rejects_unknown_kinds():
     with pytest.raises(ValueError, match="woof"):
         cats.Voice(kinds=("woof",))
+
+
+def test_clean_typed():
+    assert cats.clean_typed("  Hello,\n\tworld!  ") == ("Hello, world!", False)
+    assert cats.clean_typed("a\u0000b\u200dc \u2028d") == ("abc d", False)
+    assert cats.clean_typed("\x00 \u200b ") == ("", False)
+    text, truncated = cats.clean_typed(" ".join(["mew,"] * 50))
+    assert truncated and text.split() == ["mew,"] * 44 + ["mew..."]
+    assert cats.clean_typed(" ".join(["mew"] * 45)) == (" ".join(["mew"] * 45), False)

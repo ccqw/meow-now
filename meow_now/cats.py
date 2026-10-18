@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -261,7 +262,7 @@ class Word(NamedTuple):
 class Monologue:
     cat: Cat
     text: str
-    source: str  # "ollama" or "builtin"
+    source: str  # "ollama", "builtin" or "typed"
     audio: np.ndarray
     words: tuple[Word, ...]
 
@@ -275,13 +276,33 @@ def get_cat(cat_id: str | None, rng: np.random.Generator) -> Cat:
         raise KeyError(cat_id) from None
 
 
-def _clean(text: str) -> str:
-    text = text.strip().strip('"').strip()
-    text = re.sub(r"\s+", " ", text)
-    words = text.split(" ")
+def _cap_words(text: str) -> str:
+    """`text` with runs of whitespace collapsed, cut to MAX_WORDS words with a trailing "..."."""
+    words = text.split()
     if len(words) > MAX_WORDS:
-        text = " ".join(words[:MAX_WORDS]).rstrip(",;:") + "..."
-    return text
+        return " ".join(words[:MAX_WORDS]).rstrip(",;:") + "..."
+    return " ".join(words)
+
+
+def _clean(text: str) -> str:
+    return _cap_words(text.strip().strip('"'))
+
+
+def clean_typed(text: str) -> tuple[str, bool]:
+    """A visitor's line, made safe to speak and display, and whether it was cut short.
+
+    Control and format characters (escapes, NULs, zero-width and bidi overrides)
+    are dropped, any kind of whitespace becomes a single space, and the line is
+    capped at MAX_WORDS words like every other monologue. Empty means nothing to say.
+    """
+    kept = []
+    for ch in text:
+        if ch.isspace():
+            kept.append(" ")
+        elif not unicodedata.category(ch).startswith("C"):
+            kept.append(ch)
+    words = "".join(kept).split()
+    return _cap_words(" ".join(words)), len(words) > MAX_WORDS
 
 
 def ollama_prompt(cat: Cat) -> str:

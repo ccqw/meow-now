@@ -206,3 +206,83 @@ def test_single_purr(client):
     assert rate == SAMPLE_RATE
     assert len(samples) == int(1.0 * rate)
     assert 0.5 < max(abs(samples)) <= 0.9 + 1e-3
+
+
+def test_monologue_echoes_its_seed_and_replays_from_it(client):
+    first = client.post("/api/cats/random/monologue?seed=7").json()
+    assert first["seed"] == 7
+    # What a shared link does: the resolved cat and the seed give back the same line and audio.
+    again = client.post(f"/api/cats/{first['cat']['id']}/monologue?seed=7&improvise=false").json()
+    assert again == first
+    fresh = client.post("/api/cats/grumpy/monologue").json()
+    assert isinstance(fresh["seed"], int) and fresh["seed"] >= 0
+
+
+def test_monologue_link_skips_ollama(monkeypatch):
+    from meow_now import cats
+
+    monkeypatch.setattr(cats, "ask_ollama", lambda *a, **k: "Feed me now, servant, at once.")
+    settings = Settings(ollama_url="http://ollama.invalid", ollama_model="x", max_upload_bytes=1024)
+    client = TestClient(create_app(settings))
+    assert client.post("/api/cats/diva/monologue?seed=3").json()["source"] == "ollama"
+    linked = client.post("/api/cats/diva/monologue?seed=3&improvise=false").json()
+    assert linked["source"] == "builtin"
+    assert linked["text"] == cats.CATS["diva"].lines[3 % len(cats.CATS["diva"].lines)]
+
+
+def test_speak_says_your_words(client):
+    resp = client.post("/api/speak?seed=4", json={"text": "Feed me,  human. Now?", "cat": "wise"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert set(data) == {"cat", "text", "source", "seed", "words", "audio", "truncated"}
+    assert data["cat"]["id"] == "wise" and data["cat"]["name"] == "Professor Whiskers"
+    assert data["text"] == "Feed me, human. Now?"
+    assert data["source"] == "typed" and data["seed"] == 4 and data["truncated"] is False
+    assert [w["word"] for w in data["words"]] == ["Feed", "me,", "human.", "Now?"]
+    # The same word fields as a monologue, so the stage cat's jaw follows the real meows.
+    for w in data["words"]:
+        assert set(w) == {"word", "start", "duration", "kind"}
+        assert 0.1 <= w["duration"] <= 0.8 and w["kind"] in {"mew", "meow", "mrrp", "yowl", "purr"}
+    starts = [w["start"] for w in data["words"]]
+    assert starts == sorted(starts) and starts[0] > 0
+    samples, rate = _decode_data_url(data["audio"])
+    assert rate == SAMPLE_RATE and len(samples) / rate > starts[-1]
+    # Same text, cat and seed: the same performance.
+    again = client.post("/api/speak?seed=4", json={"text": "Feed me, human. Now?", "cat": "wise"})
+    assert again.json() == data
+
+
+def test_speak_defaults_to_a_random_cat(client):
+    data = client.post("/api/speak", json={"text": "Hello there"}).json()
+    assert data["cat"]["id"] in {"grumpy", "wise", "anxious", "diva"}
+    assert isinstance(data["seed"], int)
+
+
+def test_speak_caps_at_the_monologue_word_limit(client):
+    text = " ".join(f"word{i}" for i in range(80))
+    data = client.post("/api/speak?seed=1", json={"text": text, "cat": "grumpy"}).json()
+    assert data["truncated"] is True
+    assert len(data["words"]) == 45
+    assert data["words"][-1]["word"] == "word44..."
+
+
+def test_speak_strips_control_characters(client):
+    text = "Mew\x00 \x1b[31mred\u202e\u200b\tdot\r\nnow\x7f"
+    data = client.post("/api/speak?seed=1", json={"text": text, "cat": "anxious"}).json()
+    assert data["text"] == "Mew [31mred dot now"
+    assert [w["word"] for w in data["words"]] == data["text"].split()
+
+
+@pytest.mark.parametrize("text", ["", "   ", "\n\t", "\x00\x01\u200b"])
+def test_speak_rejects_empty_text(client, text):
+    resp = client.post("/api/speak", json={"text": text, "cat": "grumpy"})
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "give the cat something to say"
+
+
+def test_speak_rejects_bad_requests(client):
+    assert client.post("/api/speak", json={}).status_code == 422
+    assert client.post("/api/speak", content=b"meow").status_code == 422
+    assert client.post("/api/speak", json={"text": "x" * 1001}).status_code == 422
+    assert client.post("/api/speak?seed=-1", json={"text": "hi"}).status_code == 422
+    assert client.post("/api/speak", json={"text": "hi", "cat": "dog"}).status_code == 404

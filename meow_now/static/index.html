@@ -39,6 +39,7 @@
   }
 
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0; color: var(--ink); background-color: var(--ground);
@@ -112,7 +113,7 @@
   .bubble {
     position: relative; z-index: 2; width: 100%; max-width: 440px; margin: 0 0 18px;
     background: var(--bubble); color: var(--bubble-ink); border-radius: 22px;
-    padding: 14px 18px 16px; font-size: 1.06rem; line-height: 1.5; text-wrap: pretty;
+    padding: 14px 18px 16px; font-size: 1.06rem; line-height: 1.5; text-wrap: pretty; overflow-wrap: anywhere;
     box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.6); transform-origin: 50% 100%;
   }
   .bubble::after {
@@ -141,6 +142,7 @@
     background: rgba(12, 2, 12, 0.38); border-top: 1px solid rgba(255, 255, 255, 0.07);
   }
   .play {
+    position: relative;
     grid-row: 1 / span 2; width: 52px; height: 52px; border-radius: 50%; border: 0; padding: 0;
     display: grid; place-items: center; cursor: pointer;
     background: var(--catc); color: #2b1129;
@@ -151,6 +153,13 @@
   .play svg { width: 22px; height: 22px; }
   .play .i-pause, .play[data-state="playing"] .i-play { display: none; }
   .play[data-state="playing"] .i-pause { display: block; }
+  /* A shared link waits for its cue: browsers will not start sound on their own. */
+  .play::before {
+    content: ""; position: absolute; inset: -6px; border-radius: 50%; pointer-events: none;
+    border: 2px solid var(--catc); opacity: 0;
+  }
+  .play[data-cue]::before { animation: cue 1.7s var(--ease-out) infinite; }
+  @keyframes cue { 0% { opacity: 0.9; transform: scale(0.9); } 70%, 100% { opacity: 0; transform: scale(1.5); } }
   .track {
     position: relative; height: 76px; border-radius: 14px; overflow: hidden; touch-action: none;
     background: rgba(0, 0, 0, 0.28); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
@@ -193,8 +202,34 @@
   .legend .l-cat::before { background: var(--catc); }
   .track[data-mode="empty"] .legend, .track[data-mode="monologue"] .legend { display: none; }
   .track[data-mode="live"] .legend .l-cat { display: none; }
-  .deck-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 0.85rem; color: var(--cream-soft); }
-  .time { font-variant-numeric: tabular-nums; }
+  .deck-meta {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "now time" "keep keep";
+    align-items: center; gap: 8px 12px; font-size: 0.85rem; color: var(--cream-soft);
+  }
+  #now-showing { grid-area: now; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .time { grid-area: time; font-variant-numeric: tabular-nums; }
+  @media (min-width: 600px) {
+    .deck-meta { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "now keep time"; }
+  }
+
+  /* Keep the clip: save, share and link, on the deck under whatever just played. */
+  .keep { grid-area: keep; display: flex; gap: 6px; }
+  .keep-btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px 0 10px;
+    border: 0; border-radius: 999px; cursor: pointer; text-decoration: none; white-space: nowrap;
+    background: rgba(255, 255, 255, 0.08); color: var(--cream); font-size: 0.82rem; font-weight: 700;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.13);
+    transition: background-color 160ms ease, transform 140ms var(--ease-out);
+  }
+  .keep-btn:active { transform: scale(0.96); }
+  @media (hover: hover) and (pointer: fine) {
+    .keep-btn:hover { background: rgba(255, 255, 255, 0.17); }
+  }
+  .keep-btn svg { width: 16px; height: 16px; flex: none; }
+  .keep-btn .i-done, .keep-btn[data-done] .i-idle { display: none; }
+  .keep-btn[data-done] .i-done { display: block; color: var(--catc); }
+  .keep-btn .narrow { display: none; }
+  @media (max-width: 419px) { .keep-btn .wide { display: none; } .keep-btn .narrow { display: inline; } }
 
   @media (min-width: 900px) {
     .stage { min-height: 640px; position: sticky; top: 24px; }
@@ -381,6 +416,21 @@
   .status.error { color: var(--error); }
 
   .row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* Type and the cat says it. */
+  .say { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 0; }
+  .say label { color: var(--ink-soft); font-size: 0.95rem; }
+  .say-row { display: flex; gap: 8px; }
+  .say input {
+    flex: 1; min-width: 0; font: inherit; color: var(--ink); background: transparent;
+    border: 1.5px solid var(--line); border-radius: 999px; padding: 11px 18px;
+    transition: border-color 160ms ease;
+  }
+  .say input::placeholder { color: var(--ink-soft); opacity: 0.8; }
+  .say input:focus { outline: none; border-color: var(--focus); box-shadow: inset 0 0 0 1.5px var(--focus); }
+  .say-count { margin: 0; color: var(--ink-soft); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+  .say-count:empty { display: none; }
+  .say-count.over { color: var(--error); }
   .btn {
     border: 0; border-radius: 999px; padding: 12px 22px; font-weight: 700; cursor: pointer;
     background: var(--btn); color: var(--btn-ink);
@@ -393,11 +443,24 @@
     .btn.ghost:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px var(--ink); }
   }
 
+  /* A small speech bubble from the cat: the page's toast. */
+  .toast {
+    position: fixed; z-index: 20; left: 0; right: 0; bottom: max(20px, env(safe-area-inset-bottom));
+    margin: 0 auto; width: max-content; max-width: calc(100% - 32px);
+    display: flex; align-items: center; gap: 10px; padding: 9px 18px 9px 9px; border-radius: 22px;
+    background: var(--bubble); color: var(--bubble-ink); font-weight: 600; font-size: 0.95rem; line-height: 1.35;
+    box-shadow: 0 14px 30px -12px rgba(43, 17, 41, 0.6), 0 1px 3px rgba(43, 17, 41, 0.18);
+    pointer-events: none;
+  }
+  .toast .paw { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--catc); color: #2b1129; display: grid; place-items: center; }
+  .toast .paw svg { width: 18px; height: 18px; }
+
   footer { margin: 28px 4px 0; color: var(--ink-soft); font-size: 0.9rem; }
   footer a { color: inherit; text-underline-offset: 3px; }
 
   @media (prefers-reduced-motion: reduce) {
     #cat .body, #cat .head-bob, #cat .tail, #cat[data-purr] .head-purr, .dots i { animation: none; }
+    .play[data-cue]::before { animation: none; opacity: 0.9; }
     .rec-knob::before { transition: none; }
   }
 </style>
@@ -516,7 +579,25 @@
           <p class="track-empty">Your voice draws here.</p>
           <div class="legend" aria-hidden="true"><span class="l-you">you</span><span class="l-cat">cat</span></div>
         </div>
-        <div class="deck-meta"><span id="now-showing">Ready when you are</span><span id="time" class="time">0:00</span></div>
+        <div class="deck-meta">
+          <span id="now-showing">Ready when you are</span>
+          <div class="keep" id="keep" hidden>
+            <a id="save" class="keep-btn" download="meow-now.wav">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Save
+            </a>
+            <button id="share" class="keep-btn" type="button" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.5V3.5m0 0L8 7.5m4-4 4 4M7.5 11H6.5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Share
+            </button>
+            <button id="copy-link" class="keep-btn" type="button" hidden>
+              <svg class="i-idle" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg class="i-done" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span class="wide">Copy link</span><span class="narrow">Link</span>
+            </button>
+          </div>
+          <span id="time" class="time">0:00</span>
+        </div>
       </div>
       <audio id="mock-audio" preload="auto"></audio>
       <audio id="cat-audio" preload="auto"></audio>
@@ -553,15 +634,29 @@
           <button id="speak" class="btn" type="button">Let the cat talk</button>
           <button id="random" class="btn ghost" type="button">Surprise me</button>
         </div>
+        <form class="say" id="say" autocomplete="off">
+          <label for="say-text">Or put words in its mouth</label>
+          <div class="say-row">
+            <input id="say-text" type="text" maxlength="1000" enterkeyhint="send" spellcheck="true"
+                   placeholder="Type a line for the cat" aria-describedby="say-count">
+            <button id="say-go" class="btn" type="submit" disabled>Say it</button>
+          </div>
+          <p id="say-count" class="say-count" aria-live="polite"></p>
+        </form>
         <p id="cat-status" class="status" role="status"></p>
       </section>
     </div>
   </main>
 
   <p id="announce" class="sr-only" aria-live="polite"></p>
+  <div id="toast" class="toast" aria-hidden="true" hidden>
+    <span class="paw"><svg viewBox="0 0 24 24"><g fill="currentColor"><ellipse cx="12" cy="16" rx="5" ry="4.2"/><ellipse cx="5.6" cy="10.6" rx="2" ry="2.5"/><ellipse cx="9.5" cy="6.8" rx="2" ry="2.6"/><ellipse cx="14.5" cy="6.8" rx="2" ry="2.6"/><ellipse cx="18.4" cy="10.6" rx="2" ry="2.5"/></g></svg></span>
+    <span id="toast-text"></span>
+  </div>
 
   <footer>
-    Nothing you record is stored: audio is processed in memory and sent straight back.
+    Nothing you record or type is stored: it is turned into meows in memory and sent straight back.
+    Links carry only a cat and a number.
     <a href="/api/docs">API</a>
   </footer>
 </div>
@@ -578,6 +673,7 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 const fmt = (s) => { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const wideLayout = matchMedia("(min-width: 900px)");
 
 function setStatus(el, text, isError = false) {
   el.textContent = text;
@@ -660,7 +756,8 @@ function detectPitch(buf, rate) {
 const catEl = $("cat"), catWrap = $("cat-wrap"), bubble = $("subtitle");
 const roster = new Map();  // id -> {id, name, tagline}
 let chosen = null;
-const live = { mode: "idle", level: 0, wide: 0, peak: 0 };  // mode: idle | listening | thinking
+// mode: idle | listening | thinking. cue: a shared show waits for play; reading: you are typing it a line.
+const live = { mode: "idle", level: 0, wide: 0, peak: 0, cue: false, reading: false, twitch: 0 };
 const pose = { jaw: 0, mw: 1, ear: 0, wide: 0, lid: 0.4, tilt: 0, lx: 0, ly: 0 };
 const vel = { ear: 0, tilt: 0, lx: 0, ly: 0, wide: 0 };
 const written = {};
@@ -760,6 +857,17 @@ function frame(ts) {
       } else target.lid = Math.max(target.lid, Math.sin(Math.PI * b));
     }
     if (pointer) { target.lx = pointer.x; target.ly = pointer.y; }
+  }
+
+  // Waiting on stage, the cat looks where the action is: down at the play button for a
+  // shared show, over at the console (or down, on a phone) while you type its line.
+  if (!playing && live.mode === "idle") {
+    if (live.cue) Object.assign(target, { lx: -0.45, ly: 1, ear: 0.35 });
+    else if (live.reading) Object.assign(target, wideLayout.matches ? { lx: 1, ly: 0.2 } : { lx: 0, ly: 1 }, { ear: 0.2 });
+  }
+  if (live.twitch > 0.01) {  // one ear flick per keystroke
+    target.ear = Math.max(target.ear, live.twitch * 0.8);
+    live.twitch *= Math.exp(-dt / 0.1);
   }
 
   const follow = (k, rate) => { pose[k] += (target[k] - pose[k]) * (1 - Math.exp(-dt * rate)); };
@@ -977,16 +1085,22 @@ const mockAudio = $("mock-audio"), catAudio = $("cat-audio");
 let show = { audio: null, events: [], words: [], wordEls: [], duration: 0, reaction: null, kind: null };
 let shownKey = "", wordKey = "";
 
-function loadShow(audio, src, opts) {
+// `keep` describes the clip for Save, Share and Copy link. With `autoplay: false` (a shared
+// link, opened before any click) the show waits for its cue instead of starting itself.
+function loadShow(audio, src, { keep: clip, autoplay = true, ...opts }) {
   for (const other of [mockAudio, catAudio]) if (other !== audio) other.pause();
+  if (!opts.shared) forgetLink();
   show = { audio, events: [], words: [], wordEls: [], duration: 0, reaction: null, kind: null, ...opts };
   shownKey = wordKey = "";
   audio.src = src;
+  setKeep(src, clip);
   revealStage();
   trackEl.setAttribute("aria-disabled", "false");
   trackEl.tabIndex = 0;
+  live.cue = !autoplay;
+  playBtn.toggleAttribute("data-cue", !autoplay);
   syncPlayer();
-  audio.play().catch(() => syncPlayer());
+  if (autoplay) audio.play().catch(() => syncPlayer());
 }
 
 // On a phone the stage scrolls away under the controls; bring it back for the show.
@@ -1000,6 +1114,10 @@ function revealStage() {
 
 function clearShow() {
   if (show.audio) show.audio.pause();
+  if (show.shared) forgetLink();
+  clearKeep();
+  live.cue = false;
+  playBtn.removeAttribute("data-cue");
   show = { audio: null, events: [], words: [], wordEls: [], duration: 0, reaction: null, kind: null };
   shownKey = wordKey = "";
   setRibbon("empty", "");
@@ -1017,6 +1135,11 @@ function syncPlayer() {
   playBtn.disabled = !a;
   playBtn.dataset.state = playing ? "playing" : "paused";
   playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
+  if (playing && live.cue) {
+    live.cue = false;
+    playBtn.removeAttribute("data-cue");
+    nowShowing.textContent = show.title || nowShowing.textContent;
+  }
 }
 
 function updatePlayback() {
@@ -1105,6 +1228,131 @@ new ResizeObserver(() => {
   if (show.kind === "monologue") wordRibbon(show.events, show.duration, false);
 }).observe(trackEl);
 
+// ---------- keeping and sharing a result ----------
+// Nothing leaves the page unless you ask: Save writes the WAV the page already holds, Share
+// hands it to the system share sheet, and a link carries only the cat and the seed.
+const keepEl = $("keep"), saveLink = $("save"), shareBtn = $("share"), linkBtn = $("copy-link");
+const canShare = typeof navigator.share === "function";
+let keep = null;  // {blob, file name, title, text, link}
+
+function wavBlob(dataUrl) {
+  const bin = atob(dataUrl.slice(dataUrl.indexOf(",") + 1));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: "audio/wav" });
+}
+
+// "Mittens the Grumpy" + "says" + "Oh. It is you." -> mittens-the-grumpy-says-oh-it-is-you.wav
+function clipName(...parts) {
+  const slug = (text, n) => text.normalize("NFKD").toLowerCase().replace(/[^a-z0-9\s-]/g, "")
+    .split(/[\s-]+/).filter(Boolean).slice(0, n).join("-");
+  const [cat, verb, line = ""] = parts;
+  return [slug(cat, 4), verb, slug(line, 6)].filter(Boolean).join("-").slice(0, 80).replace(/-+$/, "") + ".wav";
+}
+
+function shareLink(catId, seed) {
+  const url = new URL("/", location.href);
+  url.searchParams.set("cat", catId);
+  url.searchParams.set("seed", String(seed));
+  return url.href;
+}
+
+function setKeep(src, clip) {
+  clearKeep();
+  if (!clip) return;
+  keep = { ...clip, blob: wavBlob(src) };
+  saveLink.href = URL.createObjectURL(keep.blob);
+  saveLink.download = keep.filename;
+  shareBtn.hidden = !canShare;
+  linkBtn.hidden = !keep.link;
+  keepEl.hidden = false;
+  if (!reduceMotion.matches) {
+    [...keepEl.children].filter((b) => !b.hidden).forEach((b, i) => b.animate(
+      [{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "none" }],
+      { duration: 240, delay: 120 + i * 50, easing: "cubic-bezier(0.23, 1, 0.32, 1)", fill: "backwards" },
+    ));
+  }
+}
+
+function clearKeep() {
+  if (saveLink.href.startsWith("blob:")) URL.revokeObjectURL(saveLink.href);
+  saveLink.removeAttribute("href");
+  keepEl.hidden = true;
+  keep = null;
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) { /* no clipboard API here (plain HTTP, or refused): try the old way */ }
+  const box = document.createElement("textarea");
+  box.value = text;
+  box.readOnly = true;
+  box.className = "sr-only";
+  document.body.appendChild(box);
+  box.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
+  box.remove();
+  return ok;
+}
+
+async function copyLink() {
+  if (!keep || !keep.link) return;
+  const { link, name } = keep;
+  if (await copyText(link)) {
+    linkBtn.toggleAttribute("data-done", true);
+    setTimeout(() => linkBtn.removeAttribute("data-done"), 1600);
+    toast("Link copied. " + name + " will say it again, word for word.");
+  } else {
+    // Nothing would copy, so put the link where it can be copied by hand.
+    history.replaceState(null, "", link);
+    toast("Copy the link from the address bar.");
+  }
+}
+
+linkBtn.addEventListener("click", copyLink);
+
+shareBtn.addEventListener("click", async () => {
+  if (!keep) return;
+  const clip = keep;
+  const file = new File([clip.blob], clip.filename, { type: "audio/wav" });
+  const data = { title: clip.title, text: clip.text };
+  if (navigator.canShare && navigator.canShare({ files: [file] })) data.files = [file];
+  else if (clip.link) data.url = clip.link;
+  else { saveLink.click(); return; }
+  try {
+    await navigator.share(data);
+  } catch (err) {
+    if (err.name === "AbortError") return;  // closed the share sheet: nothing to do
+    if (clip.link) copyLink(); else saveLink.click();
+  }
+});
+
+const toastEl = $("toast"), toastText = $("toast-text");
+let toastTimer = 0;
+
+function toast(text) {
+  toastText.textContent = text;
+  announce(text);
+  clearTimeout(toastTimer);
+  const quiet = reduceMotion.matches;
+  if (toastEl.hidden) {
+    toastEl.hidden = false;
+    toastEl.animate(quiet ? [{ opacity: 0 }, { opacity: 1 }]
+      : [{ opacity: 0, transform: "translateY(10px) scale(0.96)" }, { opacity: 1, transform: "none" }],
+    { duration: 240, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+  } else if (!quiet) {
+    toastEl.animate([{ transform: "scale(1.03)" }, { transform: "none" }], { duration: 180, easing: "ease-out" });
+  }
+  toastTimer = setTimeout(() => {
+    const out = toastEl.animate([{ opacity: 1 }, { opacity: 0, transform: quiet ? "none" : "translateY(6px)" }],
+      { duration: 180, easing: "ease-in" });
+    out.onfinish = () => { toastEl.hidden = true; };
+  }, 3000);
+}
+
 // ---------- meow mockery ----------
 const recBtn = $("rec"), recLabel = $("rec-label"), mockStatus = $("mock-status"), ring = $("ring");
 let recorder = null, stream = null, timer = null, meterRaf = null, startedAt = 0;
@@ -1164,9 +1412,11 @@ async function sendRecording(arrayBuffer) {
       loud: m.kind === "yowl" && (m.loudness ?? 0) > 0.95,
     }));
     nowShowing.textContent = "Mockery of you";
+    const name = cat ? cat.name : "The cat";
     loadShow(mockAudio, data.audio, {
       kind: "mockery", events, words: all.map((m) => ({ start: m.start })), wordEls,
-      duration: total, reaction,
+      duration: total, reaction, title: "Mockery of you",
+      keep: { filename: clipName(name, "mocks-you"), name, title: name + " mocks you", text: "I talked. " + name + " meowed it back." },
     });
     const yours = pitchRange(meows.map((m) => m.your_pitch_hz)), its = pitchRange(meows.filter((m) => m.kind !== "purr").map((m) => m.pitch_hz));
     announce([
@@ -1197,6 +1447,7 @@ async function startRecording() {
     return;
   }
   clearShow();
+  forgetLink();
   bubbleNote("listening", "Go on. I'm listening.");
   const chunks = [];
   recorder = new MediaRecorder(stream);
@@ -1325,39 +1576,123 @@ function wordEvents(words) {
   });
 }
 
-async function talk(catId) {
-  $("speak").disabled = $("random").disabled = true;
-  setStatus(catStatus, "Clearing its throat...");
+// Puts what a cat says on stage: the subtitles in the bubble, the ribbon and the audio.
+function perform(data, { typed = false, shared = false } = {}) {
+  const name = data.cat.name;
+  if (roster.has(data.cat.id)) selectCat(data.cat.id, true);
+  const words = data.words;
+  const last = words[words.length - 1];
+  const total = last ? last.start + 1 : 1;
+  const events = wordEvents(words);
+  const caption = shared ? "Someone sent you a cat." : "";
+  const wordEls = bubbleWords(typed ? "typed" : "monologue", name, words.map((w) => w.word), caption);
+  wordRibbon(events, total);
+  const title = typed ? "In your words" : name;
+  nowShowing.textContent = shared ? "Press play to hear it" : title;
+  // A built-in line is fixed by its cat and seed, so it can travel as a link. An improvised
+  // or typed line would have to be stored to do that, and nothing here is stored.
+  const link = data.source === "builtin" ? shareLink(data.cat.id, data.seed) : null;
+  loadShow(catAudio, data.audio, {
+    kind: "monologue", events, words, wordEls, duration: total, title, shared, autoplay: !shared,
+    keep: { filename: clipName(name, "says", data.text), name, title: name + " on Meow Now", text: name + ": \u201c" + data.text + "\u201d", link },
+  });
+  announce(shared ? name + " has something to say. Press play to hear it." : name + " says: " + data.text);
+}
+
+const sayForm = $("say"), sayText = $("say-text"), sayGo = $("say-go"), sayCount = $("say-count");
+const MAX_WORDS = 45;
+let busy = false;
+
+function setBusy(on) {
+  busy = on;
+  $("speak").disabled = $("random").disabled = on;
+  sayGo.disabled = on || !sayText.value.trim();
+}
+
+async function talk(catId, { seed = null, shared = false } = {}) {
+  setBusy(true);
+  setStatus(catStatus, shared ? "Fetching the cat you were sent..." : "Clearing its throat...");
   if (catId !== "random") { clearShow(); live.mode = "thinking"; bubbleThinking(); }
   try {
-    const data = await postJson("/api/cats/" + encodeURIComponent(catId) + "/monologue");
+    const query = seed === null ? "" : "?seed=" + seed + "&improvise=false";
+    const data = await postJson("/api/cats/" + encodeURIComponent(catId) + "/monologue" + query);
     live.mode = "idle";
-    if (roster.has(data.cat.id)) selectCat(data.cat.id, true);
-    const words = data.words;
-    const last = words[words.length - 1];
-    const total = last ? last.start + 1 : 1;
-    const events = wordEvents(words);
-    const wordEls = bubbleWords("monologue", data.cat.name, words.map((w) => w.word));
-    wordRibbon(events, total);
+    perform(data, { shared });
     setStatus(catStatus, data.source === "ollama" ? "Freshly improvised." : "");
-    nowShowing.textContent = data.cat.name;
-    loadShow(catAudio, data.audio, { kind: "monologue", events, words, wordEls, duration: total });
-    announce(data.cat.name + " says: " + data.text);
   } catch (err) {
     live.mode = "idle";
     setStatus(catStatus, "The cat refused: " + err.message, true);
     bubbleIdle();
   } finally {
-    $("speak").disabled = $("random").disabled = false;
+    setBusy(false);
   }
 }
+
+async function say() {
+  const text = sayText.value.trim();
+  if (!text || busy) return;
+  setBusy(true);
+  if (matchMedia("(pointer: coarse)").matches) sayText.blur();  // put the phone keyboard away for the show
+  setStatus(catStatus, "Reading it over...");
+  clearShow();
+  live.mode = "thinking";
+  bubbleThinking();
+  try {
+    const body = JSON.stringify({ text, cat: chosen || "random" });
+    const data = await postJson("/api/speak", body, { "Content-Type": "application/json" });
+    live.mode = "idle";
+    perform(data, { typed: true });
+    setStatus(catStatus, data.truncated ? "The cat stopped at " + MAX_WORDS + " words. Short attention span." : "");
+  } catch (err) {
+    live.mode = "idle";
+    setStatus(catStatus, "The cat refused: " + err.message, true);
+    bubbleIdle();
+  } finally {
+    setBusy(false);
+  }
+}
+
+function countWords() {
+  const n = sayText.value.trim().split(/\s+/).filter(Boolean).length;
+  sayCount.classList.toggle("over", n > MAX_WORDS);
+  sayCount.textContent = n > MAX_WORDS ? "Over " + MAX_WORDS + " words: the cat will stop at " + MAX_WORDS + "."
+    : n >= MAX_WORDS - 10 ? n + " of " + MAX_WORDS + " words" : "";
+}
+
+sayForm.addEventListener("submit", (e) => { e.preventDefault(); say(); });
+sayText.addEventListener("input", () => {
+  sayGo.disabled = busy || !sayText.value.trim();
+  countWords();
+  if (!reduceMotion.matches) live.twitch = 1;
+});
+sayText.addEventListener("focus", () => { live.reading = true; });
+sayText.addEventListener("blur", () => { live.reading = false; });
 
 $("speak").addEventListener("click", () => talk(chosen || "random"));
 $("random").addEventListener("click", () => talk("random"));
 
+// ---------- shared links: /?cat=<id>&seed=<n> ----------
+function forgetLink() {
+  if (location.search) history.replaceState(null, "", location.pathname);
+}
+
+function openLink() {
+  const q = new URLSearchParams(location.search);
+  if (!q.has("cat")) return;
+  const id = q.get("cat"), seed = q.get("seed") || "";
+  if (!roster.has(id)) {
+    forgetLink();
+    toast("That cat is not in tonight's show. Meet these four instead.");
+    return;
+  }
+  selectCat(id, false);
+  if (!/^\d{1,15}$/.test(seed)) { forgetLink(); return; }  // any whole number up to 2^53
+  talk(id, { seed: Number(seed), shared: true });
+}
+
 bubbleIdle();
 requestAnimationFrame(frame);
-loadCats().catch((err) => {
+loadCats().then(openLink).catch((err) => {
   setStatus(catStatus, "Could not load the cats: " + err.message, true);
   bubbleIdle();
 });
