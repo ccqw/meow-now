@@ -66,11 +66,3 @@ def resample(samples: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray:
     src_t = np.arange(len(samples)) / src_rate
     dst_t = np.arange(n_out) / dst_rate
     return np.interp(dst_t, src_t, samples).astype(np.float32)
-
-
-def normalize(samples: np.ndarray, peak: float = 0.9) -> np.ndarray:
-    """Scale so the loudest sample sits at `peak`. Silence stays silence."""
-    top = float(np.max(np.abs(samples))) if len(samples) else 0.0
-    if top < 1e-6:
-        return samples.astype(np.float32)
-    return (samples * (peak / top)).astype(np.float32)

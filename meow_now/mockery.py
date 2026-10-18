@@ -8,7 +8,7 @@ import numpy as np
 
 from meow_now import meows
 from meow_now.analysis import Analysis, analyze
-from meow_now.audio import SAMPLE_RATE
+from meow_now.audio import SAMPLE_RATE, resample
 
 CAT_CENTER_HZ = 650.0  # where the speaker's median pitch lands, in cat
 CAT_MIN_HZ = 350.0
@@ -34,8 +34,9 @@ def cat_pitch(voice_pitch: float | None, median: float | None) -> float:
 
 def mock(samples: np.ndarray, rate: int, seed: int = 0) -> Mockery:
     """Analyze a recording and render the meow version of it at SAMPLE_RATE."""
-    samples = samples[: int(MAX_INPUT_S * rate)]
-    analysis = analyze(samples, rate)
+    # Analysis cost scales with the sample rate, and 16 kHz is plenty for pitch.
+    samples = resample(samples[: int(MAX_INPUT_S * rate)], rate, SAMPLE_RATE)
+    analysis = analyze(samples, SAMPLE_RATE)
     rng = np.random.default_rng(seed)
     median = analysis.median_pitch
 

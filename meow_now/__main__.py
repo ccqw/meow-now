@@ -8,13 +8,17 @@ import os
 import sys
 from pathlib import Path
 
+# Loopback unless told otherwise. The container image sets HOST=0.0.0.0,
+# because there the port is only reachable through the container runtime.
+DEFAULT_HOST = "127.0.0.1"
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="meow-now")
     sub = parser.add_subparsers(dest="command")
 
     serve = sub.add_parser("serve", help="run the web app (the default)")
-    serve.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
+    serve.add_argument("--host", default=os.environ.get("HOST", DEFAULT_HOST))
     serve.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
 
     convert = sub.add_parser("mock", help="turn a WAV recording into meows")
@@ -41,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from meow_now.web import create_app
 
-    host = getattr(args, "host", os.environ.get("HOST", "0.0.0.0"))
+    host = getattr(args, "host", os.environ.get("HOST", DEFAULT_HOST))
     port = getattr(args, "port", int(os.environ.get("PORT", "8080")))
     uvicorn.run(create_app(), host=host, port=port, proxy_headers=True)
     return 0

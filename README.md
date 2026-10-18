@@ -57,7 +57,7 @@ All settings are environment variables, and all are optional. Copy
 | Variable | Default | What it does |
 |---|---|---|
 | `PORT` | `8080` | Port the web server listens on |
-| `HOST` | `0.0.0.0` | Address the web server binds to |
+| `HOST` | `127.0.0.1` (`0.0.0.0` in the container image) | Address the web server binds to |
 | `OLLAMA_URL` | unset | Base URL of an Ollama server, e.g. `http://your-ollama-host.internal:11434`. Unset means built-in monologues only |
 | `OLLAMA_MODEL` | `llama3.2` | Ollama model the cats use |
 | `MAX_UPLOAD_MB` | `8` | Largest recording the API accepts. 60 s of 16 kHz mono WAV is about 2 MB |

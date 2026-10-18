@@ -4,7 +4,7 @@ import wave
 import numpy as np
 import pytest
 
-from meow_now.audio import AudioError, decode_wav, encode_wav, normalize, resample
+from meow_now.audio import AudioError, decode_wav, encode_wav, resample
 
 
 def test_wav_round_trip_keeps_samples():
@@ -41,8 +41,3 @@ def test_resample_changes_length_not_pitch():
     assert len(y) == 16_000
     spectrum = np.abs(np.fft.rfft(y))
     assert abs(np.argmax(spectrum) - 440) <= 1  # 1 Hz bins at 1 second
-
-
-def test_normalize_leaves_silence_alone():
-    assert np.all(normalize(np.zeros(10)) == 0)
-    assert np.isclose(np.max(np.abs(normalize(np.array([0.1, -0.2])))), 0.9)

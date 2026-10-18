@@ -42,3 +42,13 @@ def test_silence_gives_no_meows():
     result = mock(np.zeros(RATE, dtype=np.float32), RATE)
     assert result.meows == ()
     assert np.max(np.abs(result.audio)) == 0
+
+
+def test_high_sample_rate_input_is_analyzed_the_same():
+    from meow_now.audio import resample
+
+    x16 = speech_like([120, 160, 200])
+    x48 = resample(x16, RATE, 48_000)
+    a, b = mock(x16, RATE), mock(x48, 48_000)
+    assert len(a.meows) == len(b.meows) == 3
+    assert abs(b.analysis.duration - a.analysis.duration) < 0.01
