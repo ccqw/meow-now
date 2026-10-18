@@ -1,7 +1,25 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 RATE = 16_000
+BROWSER_DIR = Path(__file__).parent / "browser"
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--browser-smoke",
+        action="store_true",
+        help="also collect the headless Chromium smoke tests in tests/browser",
+    )
+
+
+def pytest_ignore_collect(collection_path, config):
+    # The browser tests need Playwright and Chromium, so the default run skips them entirely.
+    if collection_path == BROWSER_DIR and not config.getoption("--browser-smoke"):
+        return True
+    return None
 
 
 def voiced_burst(pitch: float, seconds: float, rate: int = RATE) -> np.ndarray:

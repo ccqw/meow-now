@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "ruff>=0.6"]
+browser = ["pytest-playwright>=0.5,<1"]
 
 [project.scripts]
 meow-now = "meow_now.__main__:main"
