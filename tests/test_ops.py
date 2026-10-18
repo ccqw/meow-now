@@ -73,8 +73,9 @@ def test_api_returns_429_with_retry_after():
     assert resp.status_code == 429
     assert int(resp.headers["retry-after"]) == 30
     assert resp.headers["content-security-policy"]
-    # Monologues share the same budget; cheap endpoints are not limited.
+    # Monologues and typed lines share the same budget; cheap endpoints are not limited.
     assert client.post("/api/cats/dog/monologue").status_code == 429
+    assert client.post("/api/speak", json={"text": "hello"}).status_code == 429
     assert client.get("/api/cats").status_code == 200
     assert client.get("/api/meow").status_code == 200
 
@@ -139,8 +140,9 @@ def test_returns_503_when_every_render_slot_is_busy(monkeypatch):
         busy = client.post("/api/mockery?seed=1", content=wav)
         assert busy.status_code == 503
         assert busy.headers["retry-after"] == "2"
-        # Monologues share the slots.
+        # Monologues and typed lines share the slots.
         assert client.post("/api/cats/grumpy/monologue?seed=1").status_code == 503
+        assert client.post("/api/speak", json={"text": "let me in"}).status_code == 503
     finally:
         release.set()
         worker.join(10)
@@ -241,12 +243,16 @@ def test_one_access_line_per_request_without_client_details(caplog):
     with caplog.at_level(logging.INFO, logger="meow_now.access"):
         client.get("/api/meow?seed=3", headers={"x-forwarded-for": "192.0.2.9"})
         client.post("/api/mockery", content=b"secret-body")
+        client.post("/api/speak?seed=2", json={"text": "my secret line", "cat": "wise"})
+    # Nothing a visitor typed reaches any log, access or otherwise.
+    assert all("secret" not in r.getMessage() for r in caplog.records)
     records = [r for r in caplog.records if r.name == "meow_now.access"]
-    assert len(records) == 2
+    assert len(records) == 3
     lines = [json.loads(JsonFormatter().format(r)) for r in records]
     assert [(e["method"], e["path"], e["status"]) for e in lines] == [
         ("GET", "/api/meow", 200),
         ("POST", "/api/mockery", 415),
+        ("POST", "/api/speak", 200),
     ]
     for entry in lines:
         assert set(entry) == {

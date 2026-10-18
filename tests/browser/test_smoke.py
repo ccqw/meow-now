@@ -8,6 +8,7 @@ import re
 import socket
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -232,3 +233,160 @@ def test_player_pauses_and_seeks_from_the_keyboard(home: Page):
     assert home.locator("#cat-audio").evaluate("a => a.currentTime > 1")
     home.keyboard.press("Home")
     assert home.locator("#cat-audio").evaluate("a => a.currentTime < 0.5")
+
+
+# Stand-ins for the clipboard and the system share sheet, which headless Chromium lacks.
+SHARE_STUBS = """
+window.__copied = [];
+window.__shared = [];
+Object.defineProperty(navigator, "clipboard", {
+  configurable: true,
+  value: { writeText: async (text) => { window.__copied.push(text); } },
+});
+Object.defineProperty(navigator, "canShare", { configurable: true, value: (d) => !!d.files });
+Object.defineProperty(navigator, "share", {
+  configurable: true,
+  value: async (d) => {
+    const files = (d.files || []).map((f) => [f.name, f.type, f.size]);
+    window.__shared.push({ title: d.title, files });
+  },
+});
+"""
+# A cheap fingerprint of the clip, so two performances can be compared without a megabyte diff.
+AUDIO_HASH = """a => {
+    let h = 2166136261;
+    for (let i = 0; i < a.src.length; i++) h = Math.imul(h ^ a.src.charCodeAt(i), 16777619);
+    return [a.src.length, h >>> 0];
+}"""
+
+
+@pytest.fixture
+def stubbed(page: Page, server_url):
+    """The page with clipboard and share stubs, and no page errors or CSP violations."""
+    errors, console = [], []
+    page.on("pageerror", lambda exc: errors.append(str(exc)))
+    page.on("console", lambda msg: console.append(msg.text))
+    page.add_init_script(CSP_RECORDER)
+    page.add_init_script(SHARE_STUBS)
+    page.goto(server_url + "/")
+    yield page
+    assert errors == []
+    assert _csp_violations(page, console) == []
+
+
+def _said(page: Page) -> list[str]:
+    return page.locator("#subtitle .w").all_inner_texts()
+
+
+def test_download_saves_a_wav_named_for_the_cat(home: Page):
+    expect(home.locator("#keep")).to_be_hidden()
+    home.locator("#speak").click()
+    save = home.locator("#save")
+    expect(save).to_be_visible(timeout=15000)
+    name = home.locator("#subtitle .who").inner_text()
+    slug = "-".join(name.lower().split())
+    with home.expect_download() as info:
+        save.click()
+    download = info.value
+    assert re.fullmatch(rf"{slug}-says(-[a-z0-9]+)+\.wav", download.suggested_filename)
+    data = Path(download.path()).read_bytes()
+    assert data[:4] == b"RIFF" and data[8:12] == b"WAVE" and len(data) > 10_000
+
+
+def test_shared_link_reopens_the_same_monologue(stubbed: Page, server_url):
+    page = stubbed
+    page.locator("#cats button.cat").nth(2).click()
+    page.locator("#speak").click()
+    expect(page.locator("#copy-link")).to_be_visible(timeout=15000)
+    words, audio = _said(page), page.locator("#cat-audio").evaluate(AUDIO_HASH)
+    name = page.locator("#subtitle .who").inner_text()
+    page.locator("#copy-link").click()
+    toast = page.locator("#toast")
+    expect(toast).to_be_visible()
+    expect(toast).to_contain_text(f"Link copied. {name} will say it again")
+    expect(page.locator("#copy-link")).to_have_attribute("data-done", "")
+    (link,) = page.evaluate("window.__copied")
+    assert re.fullmatch(re.escape(server_url) + r"/\?cat=anxious&seed=\d+", link)
+
+    # The link opens straight into that exact performance, waiting for a press of play.
+    page.goto(link)
+    subtitle = page.locator("#subtitle")
+    expect(subtitle).to_have_attribute("data-kind", "monologue", timeout=15000)
+    expect(subtitle.locator(".caption")).to_have_text("Someone sent you a cat.")
+    assert _said(page) == words
+    assert page.locator("#cat-audio").evaluate(AUDIO_HASH) == audio
+    play = page.locator("#play")
+    expect(play).to_have_attribute("data-cue", "")
+    expect(page.locator("#now-showing")).to_have_text("Press play to hear it")
+    assert page.locator("#cat-audio").evaluate("a => a.paused")
+    expect(page.locator("#cats button.cat").nth(2)).to_have_attribute("aria-pressed", "true")
+    play.click()
+    expect(subtitle.locator(".w.said").first).to_be_visible(timeout=15000)
+    expect(play).not_to_have_attribute("data-cue", "")
+    expect(page.locator("#now-showing")).to_have_text(name)
+    assert page.url == link  # still shareable while it is on stage
+    # Moving on retires the link from the address bar.
+    page.locator("#cats button.cat").nth(0).click()
+    page.wait_for_function("() => location.search === ''")
+
+
+def test_link_with_a_large_seed_opens_the_show(home: Page, server_url):
+    # Seeds run up to 2**30, so a link can carry ten digits.
+    home.goto(server_url + "/?cat=wise&seed=1073741823")
+    expect(home.locator("#play")).to_have_attribute("data-cue", "", timeout=15000)
+    expect(home.locator("#subtitle .caption")).to_have_text("Someone sent you a cat.")
+    expect(home.locator("#subtitle .who")).to_have_text("Professor Whiskers")
+    assert home.evaluate("location.search") == "?cat=wise&seed=1073741823"
+
+
+def test_unknown_cat_link_falls_back_to_the_cast(stubbed: Page, server_url):
+    page = stubbed
+    page.goto(server_url + "/?cat=dog&seed=3")
+    expect(page.locator("#toast")).to_have_text(
+        "That cat is not in tonight's show. Meet these four instead."
+    )
+    expect(page.locator("#cats button.cat").first).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#subtitle")).to_have_attribute("data-kind", "idle")
+    page.wait_for_function("() => location.search === ''")
+    expect(page.locator("#play")).to_be_disabled()
+
+
+def test_typed_line_is_performed_with_subtitles(stubbed: Page):
+    page = stubbed
+    go = page.locator("#say-go")
+    expect(go).to_be_disabled()
+    page.locator("#cats button.cat").nth(3).click()
+    name = page.locator("#cats button.cat").nth(3).locator("strong").inner_text()
+    page.evaluate(MOUTH_LOG)
+    page.locator("#say-text").fill("Fetch the salmon, darling. Now!")
+    expect(go).to_be_enabled()
+    page.locator("#say-text").press("Enter")
+    subtitle = page.locator("#subtitle")
+    expect(subtitle).to_have_attribute("data-kind", "typed", timeout=15000)
+    expect(subtitle.locator(".who")).to_have_text(name)
+    assert _said(page) == ["Fetch", "the", "salmon,", "darling.", "Now!"]
+    assert page.locator("#cat-audio").evaluate(WAV_SRC)
+    expect(subtitle.locator(".w.said").first).to_be_visible(timeout=15000)
+    page.wait_for_function("() => window.mouths.includes('open')", timeout=15000)
+    expect(page.locator("#ribbon-dim .word-tick")).to_have_count(5)
+    expect(page.locator("#now-showing")).to_have_text("In your words")
+    # A typed line can be saved and shared as a file, but never travels as a link.
+    expect(page.locator("#save")).to_be_visible()
+    expect(page.locator("#copy-link")).to_be_hidden()
+    page.locator("#share").click()
+    page.wait_for_function("() => window.__shared.length === 1")
+    (shared,) = page.evaluate("window.__shared")
+    assert shared["title"] == f"{name} on Meow Now"
+    ((filename, kind, size),) = shared["files"]
+    assert filename.startswith("duchess-fluffington-says-fetch-the-salmon")
+    assert kind == "audio/wav" and size > 10_000
+
+
+def test_word_counter_warns_past_the_limit(home: Page):
+    box = home.locator("#say-text")
+    box.fill(" ".join(["mew"] * 20))
+    expect(home.locator("#say-count")).to_have_text("")
+    box.fill(" ".join(["mew"] * 40))
+    expect(home.locator("#say-count")).to_have_text("40 of 45 words")
+    box.fill(" ".join(["mew"] * 50))
+    expect(home.locator("#say-count")).to_have_text("Over 45 words: the cat will stop at 45.")

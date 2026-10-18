@@ -13,6 +13,7 @@ import numpy as np
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from pydantic import BaseModel, Field
 
 from meow_now import __version__, cats, meows
 from meow_now.audio import SAMPLE_RATE, AudioError, decode_wav, encode_wav
@@ -28,6 +29,10 @@ from meow_now.mockery import MAX_INPUT_S, mock
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+# The longest line /api/speak will read. Anything past MAX_WORDS is cut anyway;
+# this only bounds the work of cleaning a body nobody could have typed.
+MAX_TYPED_CHARS = 1000
 
 
 @dataclass(frozen=True)
@@ -52,6 +57,11 @@ class Settings:
             max_concurrent_renders=int(os.environ.get("MAX_CONCURRENT_RENDERS", "4")),
             render_wait_s=float(os.environ.get("RENDER_WAIT_S", "5")),
         )
+
+
+class SpeakRequest(BaseModel):
+    text: str = Field(max_length=MAX_TYPED_CHARS, description="What the cat should say")
+    cat: str = Field("random", description="A cat id, or `random`")
 
 
 def _data_url(samples) -> str:
@@ -81,6 +91,29 @@ def _cat_or_404(cat_id: str, seed: int) -> cats.Cat:
 
 def _cat_json(cat: cats.Cat) -> dict:
     return {"id": cat.id, "name": cat.name, "tagline": cat.tagline}
+
+
+def _monologue_json(result: cats.Monologue, seed: int, **extra) -> JSONResponse:
+    """The response for anything a cat says: its words with timings, and the audio."""
+    return JSONResponse(
+        {
+            "cat": _cat_json(result.cat),
+            "text": result.text,
+            "source": result.source,
+            "seed": seed,
+            "words": [
+                {
+                    "word": w.word,
+                    "start": w.start,
+                    "duration": round(w.duration, 3),
+                    "kind": w.kind,
+                }
+                for w in result.words
+            ],
+            "audio": _data_url(result.audio),
+            **extra,
+        }
+    )
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -166,33 +199,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.post("/api/cats/{cat_id}/monologue", dependencies=limited)
-    async def cat_monologue(cat_id: str, seed: int | None = Query(None, ge=0)) -> JSONResponse:
-        """A monologue from one cat; `random` picks one."""
+    async def cat_monologue(
+        cat_id: str,
+        seed: int | None = Query(None, ge=0),
+        improvise: bool = Query(True, description="false: always a built-in line"),
+    ) -> JSONResponse:
+        """A monologue from one cat; `random` picks one.
+
+        A built-in line is fixed by the cat and seed, which is what a shared link
+        replays (`improvise=false`, so it holds even when Ollama is configured).
+        """
         seed = secrets.randbelow(1 << 30) if seed is None else seed
         cat = _cat_or_404(cat_id, seed)
         # The Ollama call is network wait, not CPU, so it does not hold a render slot.
         text, source = await run_in_threadpool(
-            cats.monologue_text, cat, seed, settings.ollama_url, settings.ollama_model
+            cats.monologue_text,
+            cat,
+            seed,
+            settings.ollama_url if improvise else None,
+            settings.ollama_model,
         )
         async with renders.slot():
             result = await run_in_threadpool(cats.render_monologue, cat, text, source, seed)
-        return JSONResponse(
-            {
-                "cat": _cat_json(cat),
-                "text": result.text,
-                "source": result.source,
-                "words": [
-                    {
-                        "word": w.word,
-                        "start": w.start,
-                        "duration": round(w.duration, 3),
-                        "kind": w.kind,
-                    }
-                    for w in result.words
-                ],
-                "audio": _data_url(result.audio),
-            }
-        )
+        return _monologue_json(result, seed)
+
+    @app.post("/api/speak", dependencies=limited)
+    async def speak(body: SpeakRequest, seed: int | None = Query(None, ge=0)) -> JSONResponse:
+        """Type and the cat says it: your words, in meows, with subtitles.
+
+        The text is cleaned of control characters and capped at the monologue
+        word limit (`truncated` says so). It is spoken and sent back, never stored.
+        """
+        text, truncated = cats.clean_typed(body.text)
+        if not text:
+            raise HTTPException(422, "give the cat something to say")
+        seed = secrets.randbelow(1 << 30) if seed is None else seed
+        cat = _cat_or_404(body.cat, seed)
+        async with renders.slot():
+            result = await run_in_threadpool(cats.render_monologue, cat, text, "typed", seed)
+        return _monologue_json(result, seed, truncated=truncated)
 
     @app.get("/api/meow")
     def one_meow(

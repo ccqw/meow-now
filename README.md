@@ -13,10 +13,20 @@ Meow Now is a small, self-hosted web app with two experiences:
    diva) each deliver a short monologue, entirely in meows, with English
    subtitles that light up word by word. Point it at a local
    [Ollama](https://ollama.com) model and the cats improvise; without one they
-   use their own built-in lines.
+   use their own built-in lines. Or type a line yourself and the cat on stage
+   says it, in its own voice.
+
+Every result can be saved as a WAV (named for the cat) or shared from the
+deck under the stage. A built-in monologue can also travel as a link:
+`/?cat=<id>&seed=<n>` opens the page straight into that exact performance,
+same line, same audio, same subtitles, waiting for you to press play
+(browsers do not start sound on their own). The link carries only the cat
+and the seed; an improvised or typed line is never turned into a link,
+because that would mean storing it.
 
 Everything runs locally: no cloud APIs, no accounts, no per-minute costs, and
-no audio is stored. Recordings are processed in memory and sent straight back.
+no audio or text is stored. Recordings and typed lines are processed in memory
+and sent straight back.
 
 ## Quick start
 
@@ -63,7 +73,7 @@ All settings are environment variables, and all are optional. Copy
 | `OLLAMA_URL` | unset | Base URL of an Ollama server, e.g. `http://your-ollama-host.internal:11434`. Unset means built-in monologues only |
 | `OLLAMA_MODEL` | `llama3.2` | Ollama model the cats use |
 | `MAX_UPLOAD_MB` | `8` | Largest recording the API accepts. 60 s of 16 kHz mono WAV is about 2 MB |
-| `RATE_LIMIT_PER_MIN` | `30` | Requests per minute each client may make to the synthesis endpoints (`POST /api/mockery` and `POST /api/cats/{id}/monologue`), with bursts up to the same number. Over it the API answers 429 with `Retry-After`. `0` turns the limit off |
+| `RATE_LIMIT_PER_MIN` | `30` | Requests per minute each client may make to the synthesis endpoints (`POST /api/mockery`, `POST /api/cats/{id}/monologue` and `POST /api/speak`), with bursts up to the same number. Over it the API answers 429 with `Retry-After`. `0` turns the limit off |
 | `TRUST_PROXY_HEADERS` | `false` | Set to `true` behind a reverse proxy you run, so the rate limit keys on the last `X-Forwarded-For` address (the one your proxy saw) instead of the proxy's own address. Leave it off when clients connect directly, or they can pick their own key |
 | `MAX_CONCURRENT_RENDERS` | `4` | Syntheses a replica runs at once. Further requests wait for a slot (see the next row), then get 503 with `Retry-After`. `0` means no cap |
 | `RENDER_WAIT_S` | `5` | Seconds a request waits for a free synthesis slot before the 503 |
@@ -148,7 +158,8 @@ Interactive docs are served at `/api/docs`.
 | `GET /healthz` | | `{"status": "ok", "version": ...}` |
 | `GET /api/cats` | | The cats, and whether Ollama is configured |
 | `POST /api/mockery` | A PCM WAV file as the raw body (`Content-Type: audio/wav`), at least 8 kHz, any channels; only the first 60 s are used. Optional `?seed=` (0 or more) makes the result reproducible. Optional `?cat=` (a cat id or `random`) mocks you in that cat's voice, centred on its pitch; an unknown id is 404 | `{"audio": "data:audio/wav;base64,...", "seed", "cat": {id, name, tagline} or null, "input_seconds", "truncated", "meows": [{start, duration, pitch_hz, your_pitch_hz, kind, contour, loudness}]}`. `contour` is the syllable's pitch over its median pitch through time (empty when unvoiced); `loudness` is 0 to 1, relative to the loudest syllable. Also `"reaction"`: `none`, `silent`, `question` or `bored`; `"caption"`: a short line about the reaction for display, or `null` for `none`; and `"reaction_meows": [{start, duration, pitch_hz, kind}]`, the extra meows the reaction added (not tied to a syllable). A silent recording is not an error: it returns 200 with `reaction: "silent"` and no `meows` |
-| `POST /api/cats/{id}/monologue` | `id` is `grumpy`, `wise`, `anxious`, `diva` or `random`; optional `?seed=` | `{"cat", "text", "source": "ollama" or "builtin", "words": [{word, start, duration, kind}], "audio"}`. Each word's `start` and `duration` are in seconds and `kind` is the meow kind rendered for it |
+| `POST /api/cats/{id}/monologue` | `id` is `grumpy`, `wise`, `anxious`, `diva` or `random`; optional `?seed=`; `?improvise=false` always uses a built-in line, even with Ollama configured | `{"cat", "text", "source": "ollama" or "builtin", "seed", "words": [{word, start, duration, kind}], "audio"}`. Each word's `start` and `duration` are in seconds and `kind` is the meow kind rendered for it. A built-in line is fixed by the cat and the seed, which is what a shared link replays |
+| `POST /api/speak` | JSON `{"text": ..., "cat": ...}`; `cat` is an id or `random` (the default); `text` is up to 1000 characters; optional `?seed=` | The same shape as a monologue, with `"source": "typed"` and `"truncated"`. Control and format characters are dropped, whitespace is collapsed, and the line is capped at 45 words, the monologue limit. Empty text (after cleaning) is a 422. Nothing is stored or logged |
 | `GET /api/meow` | `pitch` (200 to 1500 Hz), `duration` (0.08 to 2 s), `kind` (`mew`, `meow`, `mrrp`, `yowl` or `purr`), `seed`. For a purr, `pitch` sets the pulse rate within 20 to 30 Hz (600 gives 25 Hz) | One meow (or purr) as `audio/wav` |
 
 Examples:
@@ -156,6 +167,10 @@ Examples:
 ```sh
 curl -s -X POST --data-binary @hello.wav -H 'Content-Type: audio/wav' \
   http://localhost:8080/api/mockery | jq '.meows | length'
+
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"text": "Is it dinner yet?", "cat": "grumpy"}' \
+  http://localhost:8080/api/speak | jq -r '.words[].word'
 
 curl -s -o meow.wav 'http://localhost:8080/api/meow?pitch=800&duration=0.6&kind=mrrp'
 curl -s -o purr.wav 'http://localhost:8080/api/meow?duration=2&kind=purr'
@@ -165,7 +180,7 @@ All audio the server returns is 24 kHz mono 16-bit WAV.
 
 Errors are JSON `{"detail": ...}` with status 400 (empty body), 404 (unknown
 cat), 413 (too large), 415 (not a readable WAV, or below 8 kHz), 422 (bad
-query parameter), 429 (over the rate limit) or 503 (every synthesis slot
+query parameter or body, or nothing to say), 429 (over the rate limit) or 503 (every synthesis slot
 busy). 429 and 503 carry a `Retry-After` header in seconds.
 
 Every response carries security headers: a Content Security Policy,
@@ -233,8 +248,10 @@ commands on Python 3.11, 3.12 and 3.13.
 `tests/browser` drives the real page in headless Chromium against a live local
 server, with a fake microphone: it checks that the cats load, that recording
 and stopping returns a mockery with audio and bars in the chosen cat's voice,
-that a silent recording shows the cat's caption, and that a monologue plays
-with subtitles, all
+that a silent recording shows the cat's caption, that a monologue plays with
+subtitles, that Save downloads a WAV named for the cat, that a copied link
+reopens the same monologue waiting for play (and an unknown cat falls back to
+the cast), and that a typed line is performed and shared as a file, all
 without a single Content Security Policy violation (and that the policy
 really blocks an inline script without the nonce). It needs Playwright and a
 browser, so plain `pytest` skips it.
