@@ -35,21 +35,22 @@ def browser_type_launch_args(browser_type_launch_args):
 @pytest.fixture(scope="session")
 def server_url():
     settings = Settings(ollama_url=None, ollama_model="x", max_upload_bytes=4 * 1024 * 1024)
-    sock = socket.socket()
-    sock.bind(("127.0.0.1", 0))
-    port = sock.getsockname()[1]
     server = uvicorn.Server(uvicorn.Config(create_app(settings), log_level="warning"))
-    thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]}, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 10
-    while not server.started:
-        if time.monotonic() > deadline or not thread.is_alive():
-            raise RuntimeError("uvicorn did not start")
-        time.sleep(0.05)
-    yield f"http://127.0.0.1:{port}"
-    server.should_exit = True
-    thread.join(timeout=10)
-    sock.close()
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        thread = threading.Thread(target=server.run, kwargs={"sockets": [sock]}, daemon=True)
+        thread.start()
+        try:
+            deadline = time.monotonic() + 10
+            while not server.started:
+                if time.monotonic() > deadline or not thread.is_alive():
+                    raise RuntimeError("uvicorn did not start")
+                time.sleep(0.05)
+            yield f"http://127.0.0.1:{port}"
+        finally:
+            server.should_exit = True
+            thread.join(timeout=10)
 
 
 @pytest.fixture
