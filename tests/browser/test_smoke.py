@@ -9,6 +9,7 @@ import socket
 import threading
 import time
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 import pytest
@@ -519,3 +520,15 @@ def test_choosing_another_cat_starts_a_new_game(home: Page):
     expect(home.locator("#cc-status")).to_have_text(re.compile("A new cat, a new tune"))
     expect(home.locator("#cc-go")).to_have_text("Play Copycat")
     expect(home.locator("#track")).to_have_attribute("data-mode", "empty")
+
+
+def test_copycat_only_sends_a_cat_from_the_cast(home: Page, server_url):
+    # A forged link names a cat that does not exist; Copycat must ask for a
+    # phrase from the cat actually on stage, never the one in the link.
+    home.goto(server_url + "/?cat=dog&seed=3")
+    first = home.locator("#cats button.cat").first
+    expect(first).to_have_attribute("aria-pressed", "true")
+    with home.expect_request(re.compile(r"/api/copycat/phrase\?")) as sent:
+        home.locator("#cc-go").click()
+    query = parse_qs(urlparse(sent.value.url).query)
+    assert query["cat"] == [first.get_attribute("data-id")]
