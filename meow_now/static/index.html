@@ -5,137 +5,589 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Meow Now</title>
 <meta name="description" content="Talk to a cat. Speech in, meows out.">
+<meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 54V14l14 12h16l14-12v40z' fill='%23e8743b'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&display=swap">
 <style>
+  /* The page is a little theatre: a plum stage with a spotlit cat, and a console beside it. */
   :root {
-    --bg: #fbf6ef; --card: #ffffff; --ink: #2b2118; --muted: #7a6a5c;
-    --accent: #e8743b; --accent-ink: #ffffff; --soft: #f3e7da; --line: #eadccd;
-    --ok: #2f8f5b; --bad: #c0392b;
+    --display: "Bagel Fat One", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+    --ground: #f5bd5c; --ground-dot: rgba(43, 17, 41, 0.07);
+    --panel: #fff4e2; --ink: #2b1129; --ink-soft: #6a3a53; --line: rgba(43, 17, 41, 0.16);
+    --sel: #ffd98a; --btn: #2b1129; --btn-ink: #ffe9cc; --rec: #e0432a;
+    --focus: #2b1129; --error: #a3221a;
+
+    /* The stage keeps its lighting in both themes. */
+    --wall-top: #43193f; --wall-bottom: #250d24; --floor: #321230;
+    --curtain: #8c1c33; --trim: #f2b13e; --spot: 255 194 110;
+    --cream: #fbe7d4; --cream-soft: #d6b3c0;
+    --you: #ff86ad; --catc: #ffc24a;
+    --bubble: #fff6ea; --bubble-ink: #2b1129; --unsaid: #87606f; --hl: #ffd77a;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #1b1612; --card: #251e18; --ink: #f4ebe1; --muted: #b3a493;
-      --accent: #f08a54; --accent-ink: #1b1612; --soft: #33291f; --line: #3d3127;
+      --ground: #170b16; --ground-dot: rgba(255, 231, 212, 0.035);
+      --panel: #23121f; --ink: #fbe7d4; --ink-soft: #d2aebb; --line: rgba(251, 231, 212, 0.14);
+      --sel: #43203c; --btn: #ffbe4f; --btn-ink: #2b1129; --rec: #ff5a3c;
+      --focus: #ffc65c; --error: #ff9a8a;
+      --wall-top: #3a1537; --wall-bottom: #1e0a1d; --floor: #2a0f28;
     }
   }
+
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
-    margin: 0; background: var(--bg); color: var(--ink);
+    margin: 0; color: var(--ink); background-color: var(--ground);
+    background-image: radial-gradient(var(--ground-dot) 1.2px, transparent 1.6px);
+    background-size: 16px 16px;
     font: 16px/1.5 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  main { max-width: 880px; margin: 0 auto; padding: 32px 16px 64px; }
-  header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
-  header svg { width: 64px; height: 64px; flex: none; }
-  h1 { font-size: 2.2rem; line-height: 1.1; margin: 0; letter-spacing: -0.02em; }
-  header p { margin: 4px 0 0; color: var(--muted); }
-  .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-  section.card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 20px;
-    padding: 22px; display: flex; flex-direction: column; gap: 14px;
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
   }
-  h2 { margin: 0; font-size: 1.3rem; }
-  .card > p { margin: 0; color: var(--muted); }
-  button {
-    font: inherit; font-weight: 600; border: 0; border-radius: 999px; cursor: pointer;
-    padding: 12px 20px; background: var(--accent); color: var(--accent-ink);
-    transition: transform 120ms ease-out, opacity 120ms;
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+  .page { max-width: 1240px; margin: 0 auto; padding: 20px 16px 40px; }
+
+  /* ---------- masthead ---------- */
+  .masthead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; margin: 0 4px 18px; }
+  h1 {
+    font-family: var(--display); font-weight: 400; margin: 0;
+    font-size: clamp(2.4rem, 1.6rem + 3vw, 3.6rem); line-height: 1; letter-spacing: -0.01em;
   }
-  button:active { transform: scale(0.97); }
-  button:disabled { opacity: 0.5; cursor: default; }
-  button.ghost { background: var(--soft); color: var(--ink); }
-  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); display: none; }
-  .recording .rec-dot { display: inline-block; animation: pulse 1s ease-in-out infinite; }
-  @keyframes pulse { 50% { opacity: 0.25; } }
-  @media (prefers-reduced-motion: reduce) { .recording .rec-dot { animation: none; } }
-  .meter { height: 8px; border-radius: 4px; background: var(--soft); overflow: hidden; }
-  .meter > div { height: 100%; width: 0; background: var(--accent); transition: width 80ms linear; }
-  .status { min-height: 1.5em; color: var(--muted); font-size: 0.95rem; }
-  .status.error { color: var(--bad); }
-  audio { width: 100%; }
-  .cats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .cat {
-    text-align: left; background: var(--soft); color: var(--ink); border-radius: 14px;
-    padding: 12px; font-weight: 400; border: 2px solid transparent;
+  .tagline { margin: 0; color: var(--ink-soft); font-size: 1.05rem; }
+
+  /* ---------- layout ---------- */
+  .layout { display: grid; gap: 16px; }
+  @media (min-width: 900px) {
+    .page { padding: 32px 28px 48px; }
+    .masthead { margin-bottom: 24px; }
+    .layout { grid-template-columns: minmax(0, 1.55fr) minmax(340px, 1fr); gap: 24px; align-items: start; }
   }
-  .cat strong { display: block; font-size: 0.98rem; }
-  .cat span { color: var(--muted); font-size: 0.85rem; line-height: 1.3; display: block; }
-  .cat[aria-pressed="true"] { border-color: var(--accent); }
-  .subtitle {
-    background: var(--soft); border-radius: 14px; padding: 14px; min-height: 4.5em;
-    font-size: 1.05rem;
+
+  /* ---------- the stage ---------- */
+  .stage {
+    --focus: #ffc65c;
+    position: relative; isolation: isolate; overflow: hidden; border-radius: 28px;
+    color: var(--cream); display: flex; flex-direction: column;
+    background: linear-gradient(180deg, var(--wall-top), var(--wall-bottom));
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 24px 48px -24px rgba(43, 17, 41, 0.55);
   }
-  .subtitle .w { transition: color 120ms; color: var(--muted); }
-  .subtitle .w.said { color: var(--ink); }
-  .subtitle .who { display: block; font-weight: 700; margin-bottom: 4px; color: var(--ink); }
-  .bars { display: flex; align-items: flex-end; gap: 2px; height: 48px; }
-  .bars i { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; opacity: 0.8; }
-  footer { margin-top: 40px; color: var(--muted); font-size: 0.9rem; text-align: center; }
-  footer a { color: inherit; }
-  label.file { cursor: pointer; text-decoration: underline; color: var(--muted); font-size: 0.9rem; }
-  label.file input { display: none; }
+  .valance {
+    position: absolute; inset: 0 0 auto; height: 34px; z-index: 3; pointer-events: none;
+    background:
+      linear-gradient(var(--curtain), var(--curtain)) 0 0 / 100% 6px no-repeat,
+      radial-gradient(circle at 50% 0, var(--curtain) 0 24px, var(--trim) 24.5px 27px, transparent 27.5px) -6px 0 / 56px 30px repeat-x;
+    filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.3));
+  }
+  .scene {
+    position: relative; flex: 1; display: flex; flex-direction: column; align-items: center;
+    padding: 46px 16px 0; min-height: 0;
+  }
+  /* The floor the cat sits on, with a pool of light. */
+  .scene::after {
+    content: ""; position: absolute; inset: auto 0 0; height: 64px; z-index: -1;
+    background:
+      radial-gradient(50% 70% at var(--spot-x, 50%) 40%, rgb(var(--spot) / 0.22), transparent 70%),
+      linear-gradient(180deg, var(--floor), color-mix(in srgb, var(--floor) 70%, black));
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .cat-wrap { position: relative; width: min(58vw, 250px); margin-top: auto; transform-origin: 50% 100%; }
+  /* The spotlight: a soft cone from the rigging down onto the cat. */
+  .cat-wrap::before {
+    content: ""; position: absolute; z-index: -1; left: 50%; bottom: 6%; width: 240%; height: 190%;
+    transform: translateX(-50%); pointer-events: none;
+    background: radial-gradient(26% 30% at 50% 58%, rgb(var(--spot) / 0.34), transparent 70%),
+      conic-gradient(from 158deg at 50% -12%, transparent, rgb(var(--spot) / 0.15) 9deg 35deg, transparent 44deg);
+    mask-image: linear-gradient(180deg, transparent, #000 40%);
+    -webkit-mask-image: linear-gradient(180deg, transparent, #000 40%);
+  }
+  #cat { display: block; width: 100%; height: auto; }
+
+  /* ---------- the speech bubble ---------- */
+  .bubble {
+    position: relative; z-index: 2; width: 100%; max-width: 440px; margin: 0 0 18px;
+    background: var(--bubble); color: var(--bubble-ink); border-radius: 22px;
+    padding: 14px 18px 16px; font-size: 1.06rem; line-height: 1.5; text-wrap: pretty;
+    box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.6); transform-origin: 50% 100%;
+  }
+  .bubble::after {
+    content: ""; position: absolute; left: calc(50% - 12px); bottom: -11px; width: 24px; height: 14px;
+    background: var(--bubble); clip-path: polygon(0 0, 100% 0, 40% 100%);
+  }
+  .bubble .who {
+    display: block; font-family: var(--display); font-weight: 400; font-size: 1.02rem;
+    letter-spacing: 0.01em; margin-bottom: 2px;
+  }
+  .bubble .tag { color: var(--unsaid); }
+  .bubble .caption { display: block; font-style: italic; color: var(--unsaid); margin-bottom: 2px; }
+  .bubble .w { color: var(--unsaid); border-radius: 6px; transition: color 140ms ease, background-color 140ms ease; }
+  .bubble .w.said { color: var(--bubble-ink); }
+  .bubble .w.now { background-color: var(--hl); box-shadow: 0 0 0 2px var(--hl); }
+  .dots { display: inline-flex; gap: 5px; padding: 6px 0 2px; }
+  .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--unsaid); animation: dot 1s var(--ease-out) infinite; }
+  .dots i:nth-child(2) { animation-delay: 140ms; }
+  .dots i:nth-child(3) { animation-delay: 280ms; }
+  @keyframes dot { 0%, 60%, 100% { transform: none; opacity: 0.5; } 30% { transform: translateY(-4px); opacity: 1; } }
+
+  /* ---------- the deck: player and pitch ribbon ---------- */
+  .deck {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto;
+    gap: 8px 12px; align-items: center; padding: 12px 14px 14px;
+    background: rgba(12, 2, 12, 0.38); border-top: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .play {
+    grid-row: 1 / span 2; width: 52px; height: 52px; border-radius: 50%; border: 0; padding: 0;
+    display: grid; place-items: center; cursor: pointer;
+    background: var(--catc); color: #2b1129;
+    transition: transform 140ms var(--ease-out), opacity 160ms ease;
+  }
+  .play:active:not(:disabled) { transform: scale(0.94); }
+  .play:disabled { opacity: 0.35; cursor: default; }
+  .play svg { width: 22px; height: 22px; }
+  .play .i-pause, .play[data-state="playing"] .i-play { display: none; }
+  .play[data-state="playing"] .i-pause { display: block; }
+  .track {
+    position: relative; height: 76px; border-radius: 14px; overflow: hidden; touch-action: none;
+    background: rgba(0, 0, 0, 0.28); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+  .track[aria-disabled="false"] { cursor: pointer; }
+  #ribbon { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #ribbon .grid { stroke: rgba(255, 255, 255, 0.07); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  #ribbon .you-line {
+    fill: none; stroke: var(--you); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+  #ribbon .you-line.unvoiced { stroke-dasharray: 2 4; }
+  #ribbon .cat-line { fill: var(--catc); }
+  #ribbon .cat-line.reaction { opacity: 0.6; }
+  #ribbon .word-tick {
+    stroke: var(--catc); stroke-width: 8; stroke-linecap: round; vector-effect: non-scaling-stroke;
+  }
+  #ribbon .word-tick.loud { stroke-width: 12; }
+  #ribbon .dim { opacity: 0.32; }
+  #trace {
+    fill: none; stroke: var(--you); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+  #trace-level { fill: rgb(255 134 173 / 0.18); }
+  #playhead { stroke: var(--cream); stroke-width: 2; vector-effect: non-scaling-stroke; opacity: 0.9; }
+  .track[data-mode="empty"] #playhead, .track[data-mode="live"] #playhead { display: none; }
+  .track-empty {
+    position: absolute; inset: 0; margin: 0; display: grid; place-items: center; padding: 0 12px;
+    color: var(--cream-soft); font-size: 0.9rem; text-align: center; pointer-events: none;
+  }
+  .track:not([data-mode="empty"]) .track-empty { display: none; }
+  .legend {
+    position: absolute; top: 6px; right: 10px; display: flex; gap: 10px; font-size: 0.75rem;
+    color: var(--cream-soft); pointer-events: none;
+  }
+  .legend span::before {
+    content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 5px; vertical-align: 0; background: var(--you);
+  }
+  .legend .l-cat::before { background: var(--catc); }
+  .track[data-mode="empty"] .legend, .track[data-mode="monologue"] .legend { display: none; }
+  .track[data-mode="live"] .legend .l-cat { display: none; }
+  .deck-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 0.85rem; color: var(--cream-soft); }
+  .time { font-variant-numeric: tabular-nums; }
+
+  @media (min-width: 900px) {
+    .stage { min-height: 640px; position: sticky; top: 24px; }
+    .scene { display: block; padding: 0; }
+    .scene::after { height: 92px; }
+    .cat-wrap { position: absolute; left: 8%; bottom: 10px; width: 46%; max-width: 360px; margin: 0; }
+    .scene { --spot-x: 32%; }
+    .bubble {
+      position: absolute; top: 64px; right: 28px; width: 46%; max-width: 400px; margin: 0;
+      font-size: 1.12rem; transform-origin: 0 100%;
+    }
+    .bubble::after { left: -10px; bottom: 26px; width: 18px; height: 22px; clip-path: polygon(100% 0, 100% 100%, 0 80%); }
+    .deck { padding: 14px 18px 18px; column-gap: 16px; }
+    .track { height: 96px; }
+  }
+
+  /* ---------- the cat ---------- */
+  .cat-art {
+    --coat: #8f90a2; --coat-line: #3f3f50; --belly: #dedae1; --paw: #f7f3ef; --iris: #f0b62f;
+    --inner: #d58f9d; --nose: #c07686; --whisker: #f6f2f4;
+    --lid-rest: 0.42; --ear-rest: 14; --pupil-w: 0.38; --pupil-h: 1; --eye-scale: 1; --whisker-len: 1;
+    --f-brows: 1; --f-glasses: 0; --f-blaze: 0; --f-stripes: 0; --f-lashes: 0; --f-bow: 0; --f-fluff: 0;
+    --jaw: 0; --mouth-w: 1; --ear: 0; --wide: 0; --lid: var(--lid-rest); --tilt: 0; --lx: 0; --ly: 0;
+    overflow: visible;
+  }
+  .cat-art[data-coat="wise"] {
+    --coat: #2c2531; --coat-line: #6d5c77; --belly: #f4ede6; --paw: #f4ede6; --iris: #a3d36a;
+    --inner: #8e4f62; --nose: #e38aa0; --whisker: #f4ede6;
+    --lid-rest: 0.3; --ear-rest: 4; --pupil-w: 0.62; --whisker-len: 1.3;
+    --f-brows: 0; --f-glasses: 1; --f-blaze: 1;
+  }
+  .cat-art[data-coat="anxious"] {
+    --coat: #ec8c3f; --coat-line: #8a3f12; --belly: #fce2c4; --paw: #fce2c4; --iris: #cfe070;
+    --inner: #f4a98a; --nose: #e7807f; --whisker: #fff3e2;
+    --lid-rest: 0; --ear-rest: -3; --pupil-w: 1; --pupil-h: 1.05; --eye-scale: 1.08;
+    --f-brows: 0; --f-stripes: 1;
+  }
+  .cat-art[data-coat="diva"] {
+    --coat: #f8f0e7; --coat-line: #a8917f; --belly: #ffffff; --paw: #ffffff; --iris: #5aa2ec;
+    --inner: #f6aec1; --nose: #f08aa7; --whisker: #a8917f;
+    --lid-rest: 0.18; --ear-rest: 6; --pupil-w: 0.46;
+    --f-brows: 0; --f-lashes: 1; --f-bow: 1; --f-fluff: 1;
+  }
+  .cat-art .c-coat { fill: var(--coat); stroke: var(--coat-line); stroke-width: 3; stroke-linejoin: round; }
+  .cat-art .c-belly { fill: var(--belly); }
+  .cat-art .c-paw { fill: var(--paw); stroke: var(--coat-line); stroke-width: 3; }
+  .cat-art .c-inner { fill: var(--inner); }
+  .cat-art .c-iris { fill: var(--iris); }
+  .cat-art .c-pupil { fill: #170a14; }
+  .cat-art .c-glint { fill: #fff; }
+  .cat-art .c-rim { fill: none; stroke: var(--coat-line); stroke-width: 3; }
+  .cat-art .c-nose { fill: var(--nose); stroke: var(--coat-line); stroke-width: 2; stroke-linejoin: round; }
+  .cat-art .c-line, .cat-art .c-stripe {
+    fill: none; stroke: var(--coat-line); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .cat-art .c-stripe { stroke-width: 6; opacity: 0.55; }
+  .cat-art .toes { stroke-width: 2; }
+  .cat-art .brows { stroke-width: 6; }
+  .cat-art .purr-marks { stroke: var(--catc); }
+  .cat-art .c-whisker { fill: none; stroke: var(--whisker); stroke-width: 1.8; stroke-linecap: round; opacity: 0.85; }
+  .cat-art .c-tail-line { fill: none; stroke: var(--coat-line); stroke-width: 30; stroke-linecap: round; }
+  .cat-art .c-tail { fill: none; stroke: var(--coat); stroke-width: 24; stroke-linecap: round; }
+  .cat-art .c-shadow { fill: rgba(0, 0, 0, 0.38); }
+  .cat-art :is(.c-coat, .c-belly, .c-paw, .c-inner, .c-iris, .c-nose, .c-tail) {
+    transition: fill 280ms ease, stroke 280ms ease;
+  }
+  .cat-art .c-mouth { fill: #4b0f24; }
+  .cat-art .c-tongue { fill: #ef7f98; }
+  .cat-art .c-fang { fill: #fffaf3; }
+  .cat-art .c-lid { fill: var(--coat); stroke: var(--coat-line); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+  .cat-art .f-brows { opacity: var(--f-brows); }
+  .cat-art .f-glasses { opacity: var(--f-glasses); }
+  .cat-art .f-blaze { opacity: var(--f-blaze); }
+  .cat-art .f-stripes { opacity: var(--f-stripes); }
+  .cat-art .f-lashes { opacity: var(--f-lashes); }
+  .cat-art .f-bow { opacity: var(--f-bow); }
+  .cat-art .f-fluff { opacity: var(--f-fluff); }
+  .cat-art :is(.f-brows, .f-glasses, .f-blaze, .f-stripes, .f-lashes, .f-bow, .f-fluff) { transition: opacity 240ms ease; }
+  .glasses { fill: rgba(255, 240, 220, 0.12); stroke: #e2b55a; stroke-width: 5; stroke-linecap: round; }
+  .bow { fill: #ff6f9a; stroke: #b8335c; stroke-width: 2.5; stroke-linejoin: round; }
+
+  /* Rig: every moving part reads a custom property the animation loop writes. */
+  .cat-art .head { transform: rotate(calc(var(--tilt) * 1deg)); transform-origin: 200px 214px; }
+  .cat-art .ear-l {
+    transform: translateY(calc(var(--ear) * -6px)) rotate(calc((var(--ear-rest) - var(--ear) * 12) * -1deg));
+    transform-origin: 150px 112px;
+  }
+  .cat-art .ear-r {
+    transform: translateY(calc(var(--ear) * -6px)) rotate(calc((var(--ear-rest) - var(--ear) * 12) * 1deg));
+    transform-origin: 250px 112px;
+  }
+  .cat-art .eye-inner { transform: scale(calc(var(--eye-scale) + var(--wide) * 0.2)); }
+  .cat-art .pupil { transform: translate(calc(var(--lx) * 6px), calc(var(--ly) * 5px)); }
+  .cat-art .pupil-shape { transform: scale(calc(var(--pupil-w) + var(--wide) * 0.3), var(--pupil-h)); }
+  .cat-art .lid { transform: scaleY(var(--lid)); transform-origin: 0 -24px; }
+  .cat-art .mouth-open { transform: scale(var(--mouth-w), var(--jaw)); transform-origin: 200px 184px; }
+  .cat-art .chin { transform: translateY(calc(var(--jaw) * 30px)); }
+  .cat-art .mouth-w { opacity: calc(1 - var(--jaw) * 4); }
+  .cat-art .whiskers-l {
+    transform: rotate(calc(var(--jaw) * 6deg)) scale(var(--whisker-len));
+    transform-origin: 176px 188px;
+  }
+  .cat-art .whiskers-r {
+    transform: rotate(calc(var(--jaw) * -6deg)) scale(var(--whisker-len));
+    transform-origin: 224px 188px;
+  }
+  .cat-art .purr-marks { opacity: 0; transition: opacity 200ms ease; }
+  .cat-art[data-purr] .purr-marks { opacity: 0.85; }
+
+  /* Idle life: breathing and a tail with opinions. */
+  #cat .body { animation: breathe 3.8s ease-in-out infinite; transform-origin: 200px 384px; }
+  #cat .head-bob { animation: bob 3.8s ease-in-out infinite; }
+  #cat .tail { animation: tail 5.2s ease-in-out infinite; transform-origin: 258px 366px; }
+  #cat[data-purr] .head-purr { animation: purr 80ms linear infinite; }
+  @keyframes breathe { 50% { transform: scale(1.012, 1.022); } }
+  @keyframes bob { 50% { transform: translateY(-3px); } }
+  @keyframes tail {
+    0%, 100% { transform: rotate(-3deg); } 40% { transform: rotate(5deg); }
+    70% { transform: rotate(-1deg); } 77% { transform: rotate(10deg); } 85% { transform: rotate(-3deg); }
+  }
+  @keyframes purr {
+    0% { transform: translate(0, 0); } 25% { transform: translate(0.8px, 0.4px); }
+    50% { transform: translate(0, -0.5px); } 75% { transform: translate(-0.8px, 0.3px); }
+  }
+
+  /* ---------- the console ---------- */
+  .console {
+    background: var(--panel); border-radius: 28px; padding: 6px 20px;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset, 0 18px 40px -28px rgba(43, 17, 41, 0.5);
+  }
+  .block { padding: 18px 0 20px; display: flex; flex-direction: column; gap: 12px; }
+  .block + .block { border-top: 1px solid var(--line); }
+  h2 { font-family: var(--display); font-weight: 400; font-size: 1.45rem; line-height: 1.1; margin: 0; letter-spacing: 0.005em; }
+  .block > p { margin: -4px 0 0; color: var(--ink-soft); max-width: 46ch; }
+  button { font: inherit; color: inherit; }
+
+  .cats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  button.cat {
+    display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 2px 10px;
+    text-align: left; padding: 8px 10px 8px 8px; border-radius: 16px; cursor: pointer;
+    background: transparent; border: 1.5px solid var(--line);
+    transition: background-color 160ms ease, border-color 160ms ease, transform 140ms var(--ease-out);
+  }
+  button.cat:active { transform: scale(0.97); }
+  button.cat[aria-pressed="true"] { background: var(--sel); border-color: var(--ink); }
+  @media (hover: hover) and (pointer: fine) {
+    button.cat:hover:not([aria-pressed="true"]) { border-color: color-mix(in srgb, var(--ink) 45%, transparent); }
+  }
+  button.cat .face { grid-row: 1 / span 2; width: 44px; height: 44px; }
+  button.cat strong { font-size: 0.9rem; line-height: 1.2; }
+  button.cat span { color: var(--ink-soft); font-size: 0.82rem; line-height: 1.3; display: none; }
+  @media (min-width: 900px) {
+    button.cat { grid-template-columns: 48px minmax(0, 1fr); align-items: start; padding: 10px; }
+    button.cat .face { width: 48px; height: 48px; }
+    button.cat strong { font-size: 0.95rem; }
+    button.cat span { display: block; }
+  }
+
+  .rec-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .rec {
+    --lvl: 0;
+    display: inline-flex; align-items: center; gap: 14px; padding: 8px 24px 8px 8px; border: 0;
+    border-radius: 999px; cursor: pointer; background: var(--btn); color: var(--btn-ink);
+    font-weight: 700; font-size: 1.05rem; transition: transform 140ms var(--ease-out);
+  }
+  .rec:active { transform: scale(0.97); }
+  .rec-knob { position: relative; width: 60px; height: 60px; display: grid; place-items: center; }
+  .rec-knob::before {
+    content: ""; position: absolute; inset: 7px; border-radius: 50%; background: var(--rec);
+    transform: scale(calc(1 + var(--lvl) * 0.12)); transition: transform 60ms linear;
+  }
+  .rec-knob .ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 4; }
+  .ring .ring-track { stroke: rgba(255, 255, 255, 0.14); }
+  .ring .ring-fill { stroke: var(--catc); stroke-linecap: round; stroke-dasharray: 1 1; stroke-dashoffset: 1; }
+  .rec-knob .ico { position: relative; width: 24px; height: 24px; color: #fff; }
+  .rec .i-stop, .recording .rec .i-mic { display: none; }
+  .recording .rec .i-stop { display: block; }
+  .clock { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  label.file { align-self: flex-start; cursor: pointer; color: var(--ink-soft); font-size: 0.92rem; text-decoration: underline; text-underline-offset: 3px; }
+  label.file:focus-within { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 4px; }
+  .status { min-height: 1.5em; color: var(--ink-soft); font-size: 0.95rem; margin: 0; }
+  .status:empty { display: none; }
+  .status.error { color: var(--error); }
+
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn {
+    border: 0; border-radius: 999px; padding: 12px 22px; font-weight: 700; cursor: pointer;
+    background: var(--btn); color: var(--btn-ink);
+    transition: transform 140ms var(--ease-out), opacity 160ms ease, background-color 160ms ease;
+  }
+  .btn:active:not(:disabled) { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+  .btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+  @media (hover: hover) and (pointer: fine) {
+    .btn.ghost:hover:not(:disabled) { box-shadow: inset 0 0 0 1.5px var(--ink); }
+  }
+
+  footer { margin: 28px 4px 0; color: var(--ink-soft); font-size: 0.9rem; }
+  footer a { color: inherit; text-underline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #cat .body, #cat .head-bob, #cat .tail, #cat[data-purr] .head-purr, .dots i { animation: none; }
+    .rec-knob::before { transition: none; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <svg viewBox="0 0 64 64" aria-hidden="true">
-      <path d="M8 56V12l15 13h18l15-13v44z" fill="var(--accent)"/>
-      <circle cx="24" cy="36" r="4" fill="var(--bg)"/>
-      <circle cx="40" cy="36" r="4" fill="var(--bg)"/>
-      <path id="mouth" d="M28 46q4 3 8 0" stroke="var(--bg)" stroke-width="3" fill="none" stroke-linecap="round"/>
-    </svg>
-    <div>
-      <h1>Meow Now</h1>
-      <p>Speech in, meows out. Plus four cats with opinions.</p>
-    </div>
+<!--
+  Meow Now. One stage, one cat, two ways to make it talk.
+  The cat is an inline SVG rig: the animation loop writes custom properties on #cat
+  (--jaw, --mouth-w, --ear, --wide, --lid, --tilt, --lx, --ly) and CSS turns them into
+  transforms. Coats and features are custom properties too, so a cat is just a data-coat.
+-->
+<div class="page">
+  <header class="masthead">
+    <h1>Meow Now</h1>
+    <p class="tagline">Speech in, meows out. Plus four cats with opinions.</p>
   </header>
 
-  <div class="grid">
-    <section class="card" id="mockery">
-      <h2>1. Meow Mockery</h2>
-      <p>Talk for up to 60 seconds. A cat will repeat it back: same rhythm, same ups and downs, no words.</p>
-      <div class="row">
-        <button id="rec">Start talking</button>
-        <span class="rec-dot" aria-hidden="true"></span>
-        <span id="clock" class="status"></span>
+  <main class="layout">
+    <section class="stage" aria-label="Stage">
+      <div class="valance" aria-hidden="true"></div>
+      <div class="scene">
+        <div class="bubble" id="subtitle" data-kind="idle"></div>
+        <div class="cat-wrap" id="cat-wrap">
+          <svg id="cat" class="cat-art" data-coat="grumpy" data-mouth="closed" data-state="idle"
+               viewBox="30 18 360 384" role="img" aria-labelledby="cat-title">
+            <title id="cat-title">A cat on stage</title>
+            <defs><clipPath id="eye-clip"><ellipse rx="21" ry="22"/></clipPath></defs>
+            <ellipse class="c-shadow" cx="205" cy="390" rx="132" ry="11"/>
+            <g class="tail">
+              <path class="c-tail-line" d="M258 366C318 378 356 346 348 296C344 262 320 246 330 216"/>
+              <path class="c-tail" d="M258 366C318 378 356 346 348 296C344 262 320 246 330 216"/>
+            </g>
+            <g class="body">
+              <path class="c-coat" d="M200 196C138 196 106 268 106 326C106 364 142 382 200 382C258 382 294 364 294 326C294 268 262 196 200 196Z"/>
+              <path class="c-belly" d="M200 238C168 238 154 290 156 330C158 362 180 374 200 374C220 374 242 362 244 330C246 290 232 238 200 238Z"/>
+              <path class="c-stripe f-stripes" d="M114 292Q130 288 142 298M112 320Q130 316 144 326M286 292Q270 288 258 298M288 320Q270 316 256 326"/>
+              <path class="c-belly f-fluff" d="M146 212L160 238L172 222L184 248L200 226L216 248L228 222L240 238L254 212Z"/>
+              <ellipse class="c-paw" cx="170" cy="374" rx="24" ry="14"/>
+              <ellipse class="c-paw" cx="230" cy="374" rx="24" ry="14"/>
+              <path class="c-line toes" d="M163 381v-6M171 382v-7M179 381v-6M221 381v-6M229 382v-7M237 381v-6"/>
+            </g>
+            <g class="head-bob"><g class="head-purr"><g class="head">
+              <g class="ear-l">
+                <path class="c-coat" d="M112 132L114 50Q116 30 133 40L186 82Z"/>
+                <path class="c-inner" d="M124 112L125 60Q126 52 133 57L168 86Z"/>
+              </g>
+              <g class="ear-r">
+                <path class="c-coat" d="M288 132L286 50Q284 30 267 40L214 82Z"/>
+                <path class="c-inner" d="M276 112L275 60Q274 52 267 57L232 86Z"/>
+              </g>
+              <path class="c-coat f-fluff" d="M110 166L86 174L104 184L84 196L108 200L96 214L126 208ZM290 166L314 174L296 184L316 196L292 200L304 214L274 208Z"/>
+              <path class="c-coat" d="M200 70C256 70 294 104 296 150C298 196 258 224 200 224C142 224 102 196 104 150C106 104 144 70 200 70Z"/>
+              <path class="c-belly f-blaze" d="M200 92C192 118 182 140 176 168C172 192 228 192 224 168C218 140 208 118 200 92Z"/>
+              <path class="c-stripe f-stripes" d="M184 84L188 104M200 80V104M216 84L212 104M108 150L126 154M106 166L124 166M292 150L274 154M294 166L276 166"/>
+              <g transform="translate(158 146)"><g class="eye-inner">
+                <g clip-path="url(#eye-clip)">
+                  <ellipse class="c-iris" rx="21" ry="22"/>
+                  <g class="pupil"><ellipse class="c-pupil pupil-shape" rx="10" ry="16"/><circle class="c-glint" cx="-6" cy="-9" r="4.2"/><circle class="c-glint" cx="5" cy="8" r="1.8"/></g>
+                  <path class="c-lid lid" d="M-26 -24H26V20Q0 30-26 20Z"/>
+                </g>
+                <ellipse class="c-rim" rx="21" ry="22"/>
+              </g></g>
+              <g transform="translate(242 146)"><g class="eye-inner">
+                <g clip-path="url(#eye-clip)">
+                  <ellipse class="c-iris" rx="21" ry="22"/>
+                  <g class="pupil"><ellipse class="c-pupil pupil-shape" rx="10" ry="16"/><circle class="c-glint" cx="-6" cy="-9" r="4.2"/><circle class="c-glint" cx="5" cy="8" r="1.8"/></g>
+                  <path class="c-lid lid" d="M-26 -24H26V20Q0 30-26 20Z"/>
+                </g>
+                <ellipse class="c-rim" rx="21" ry="22"/>
+              </g></g>
+              <path class="c-line brows f-brows" d="M132 114L176 126M268 114L224 126"/>
+              <path class="c-line f-lashes" d="M140 133l-9-5M144 127l-7-8M151 124l-3-9M260 133l9-5M256 127l7-8M249 124l3-9"/>
+              <g class="f-glasses glasses">
+                <circle cx="158" cy="146" r="30"/><circle cx="242" cy="146" r="30"/>
+                <path d="M188 142Q200 133 212 142M128 140L108 130M272 140L292 130" fill="none"/>
+              </g>
+              <g class="mouth-open">
+                <path id="mouth" class="c-mouth" d="M184 186Q200 181 216 186Q220 214 200 218Q180 214 184 186Z"/>
+                <path class="c-tongue" d="M189 208Q200 200 211 208Q209 217 200 217Q191 217 189 208Z"/>
+                <path class="c-fang" d="M188 187L191 195L194 187ZM212 187L209 195L206 187Z"/>
+              </g>
+              <ellipse class="c-belly chin" cx="200" cy="197" rx="13" ry="7"/>
+              <ellipse class="c-belly" cx="187" cy="186" rx="16" ry="12"/>
+              <ellipse class="c-belly" cx="213" cy="186" rx="16" ry="12"/>
+              <path class="c-line" d="M200 176V188"/>
+              <path class="c-line mouth-w" d="M200 188Q194 196 186 192M200 188Q206 196 214 192"/>
+              <g class="whiskers-l"><path class="c-whisker" d="M174 182L118 172M174 188L116 190M176 194L122 208"/></g>
+              <g class="whiskers-r"><path class="c-whisker" d="M226 182L282 172M226 188L284 190M224 194L278 208"/></g>
+              <path class="c-nose" d="M190 166Q200 161 210 166Q207 175 200 178Q193 175 190 166Z"/>
+              <g class="f-bow bow" transform="rotate(-18 262 92)">
+                <path d="M262 92L240 76Q233 92 240 108ZM262 92L284 76Q291 92 284 108Z"/>
+                <circle cx="262" cy="92" r="7"/>
+              </g>
+              <path class="c-line purr-marks" d="M92 150Q84 162 92 174M80 144Q68 162 80 180M308 150Q316 162 308 174M320 144Q332 162 320 180"/>
+            </g></g></g>
+          </svg>
+        </div>
       </div>
-      <div class="meter" aria-hidden="true"><div id="level"></div></div>
-      <label class="file">or upload a recording<input type="file" id="file" accept="audio/*"></label>
-      <div id="mock-status" class="status" role="status"></div>
-      <div id="bars" class="bars" aria-hidden="true"></div>
-      <audio id="mock-audio" controls hidden></audio>
+
+      <div class="deck">
+        <button id="play" class="play" type="button" aria-label="Play" data-state="paused" disabled>
+          <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z" fill="currentColor"/></svg>
+          <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.5" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1.5" fill="currentColor"/></svg>
+        </button>
+        <div id="track" class="track" data-mode="empty" role="slider" tabindex="-1"
+             aria-label="Playback position" aria-disabled="true"
+             aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-valuetext="Nothing to play yet">
+          <svg id="ribbon" viewBox="0 0 1000 120" preserveAspectRatio="none" aria-hidden="true">
+            <defs><clipPath id="played"><rect id="played-rect" x="0" y="0" width="0" height="120"/></clipPath></defs>
+            <g id="ribbon-grid"></g>
+            <g id="ribbon-art"><g id="ribbon-dim" class="dim"></g><g id="ribbon-lit" clip-path="url(#played)"></g></g>
+            <path id="trace-level" d=""/>
+            <path id="trace" d=""/>
+            <line id="playhead" x1="0" x2="0" y1="0" y2="120"/>
+          </svg>
+          <p class="track-empty">Your voice draws here.</p>
+          <div class="legend" aria-hidden="true"><span class="l-you">you</span><span class="l-cat">cat</span></div>
+        </div>
+        <div class="deck-meta"><span id="now-showing">Ready when you are</span><span id="time" class="time">0:00</span></div>
+      </div>
+      <audio id="mock-audio" preload="auto"></audio>
+      <audio id="cat-audio" preload="auto"></audio>
     </section>
 
-    <section class="card" id="talk">
-      <h2>2. Talkative Cats</h2>
-      <p>Pick a cat. It has things to say, and it will say them in meows. Subtitles provided.</p>
-      <div class="cats" id="cats"></div>
-      <div class="row">
-        <button id="speak">Let the cat talk</button>
-        <button id="random" class="ghost">Surprise me</button>
-      </div>
-      <div id="cat-status" class="status" role="status"></div>
-      <div class="subtitle" id="subtitle" aria-live="polite"></div>
-      <audio id="cat-audio" controls hidden></audio>
-    </section>
-  </div>
+    <div class="console">
+      <section class="block" id="cast" aria-labelledby="cast-h">
+        <h2 id="cast-h">Pick a cat</h2>
+        <div class="cats" id="cats"></div>
+      </section>
+
+      <section class="block" id="mockery" aria-labelledby="mockery-h">
+        <h2 id="mockery-h">Meow Mockery</h2>
+        <p>Talk for up to a minute. The cat repeats it back: same rhythm, same ups and downs, no words.</p>
+        <div class="rec-row">
+          <button id="rec" class="rec" type="button">
+            <span class="rec-knob" aria-hidden="true">
+              <svg class="ring" viewBox="0 0 64 64"><circle class="ring-track" cx="32" cy="32" r="29"/><circle id="ring" class="ring-fill" cx="32" cy="32" r="29" pathLength="1"/></svg>
+              <svg class="ico i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <svg class="ico i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="3" fill="currentColor"/></svg>
+            </span>
+            <span id="rec-label">Start talking</span>
+          </button>
+          <span id="clock" class="clock"></span>
+        </div>
+        <label class="file">or upload a recording<input type="file" id="file" accept="audio/*" class="sr-only"></label>
+        <p id="mock-status" class="status" role="status"></p>
+      </section>
+
+      <section class="block" id="talk" aria-labelledby="talk-h">
+        <h2 id="talk-h">Talkative Cats</h2>
+        <p>Your cat has things to say, and it will say them in meows. Subtitles provided.</p>
+        <div class="row">
+          <button id="speak" class="btn" type="button">Let the cat talk</button>
+          <button id="random" class="btn ghost" type="button">Surprise me</button>
+        </div>
+        <p id="cat-status" class="status" role="status"></p>
+      </section>
+    </div>
+  </main>
+
+  <p id="announce" class="sr-only" aria-live="polite"></p>
 
   <footer>
     Nothing you record is stored: audio is processed in memory and sent straight back.
     <a href="/api/docs">API</a>
   </footer>
-</main>
+</div>
 
 <script>
 "use strict";
 const MAX_SECONDS = 60;
 const TARGET_RATE = 16000;
+const LO_HZ = 60, HI_HZ = 1500;  // the ribbon's pitch axis: people at the bottom, cats on top
+const RW = 1000, RH = 120;  // ribbon viewBox
+const TRACE_SECONDS = 6;
 const $ = (id) => document.getElementById(id);
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const fmt = (s) => { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
 function setStatus(el, text, isError = false) {
   el.textContent = text;
   el.classList.toggle("error", isError);
+}
+
+function announce(text) {
+  const el = $("announce");
+  el.textContent = "";
+  setTimeout(() => { el.textContent = text; }, 60);
 }
 
 // ---------- audio helpers ----------
@@ -177,43 +629,553 @@ async function postJson(url, body, headers = {}) {
   return data;
 }
 
-// ---------- meow mockery ----------
-const recBtn = $("rec"), mockStatus = $("mock-status"), mockAudio = $("mock-audio");
-let recorder = null, stream = null, timer = null, meterRaf = null, startedAt = 0;
-
-function drawBars(meows, seconds) {
-  const bars = $("bars");
-  bars.replaceChildren();
-  if (!meows.length) return;
-  const n = 48, buckets = new Array(n).fill(0);
-  for (const m of meows) {
-    const i = Math.min(n - 1, Math.floor((m.start / Math.max(seconds, 0.1)) * n));
-    buckets[i] = Math.max(buckets[i], m.pitch_hz);
+// Pitch of one analyser frame by normalised autocorrelation, or null when unvoiced.
+function detectPitch(buf, rate) {
+  const n = 1024;
+  let energy = 0;
+  for (let i = 0; i < n; i++) energy += buf[i] * buf[i];
+  if (Math.sqrt(energy / n) < 0.01) return null;
+  const minLag = Math.floor(rate / 1100), maxLag = Math.min(Math.ceil(rate / 70), buf.length - n);
+  const r = new Float32Array(maxLag + 2);
+  let best = 0;
+  for (let lag = minLag; lag <= maxLag + 1; lag++) {
+    let s = 0;
+    for (let i = 0; i < n; i++) s += buf[i] * buf[i + lag];
+    r[lag] = s / energy;
+    if (lag <= maxLag && r[lag] > best) best = r[lag];
   }
-  for (const b of buckets) {
-    const bar = document.createElement("i");
-    bar.style.height = b ? Math.max(8, Math.min(100, (b / 1200) * 100)) + "%" : "2px";
-    bars.appendChild(bar);
+  if (best < 0.5) return null;
+  // The first peak near the best one avoids octave errors.
+  for (let lag = minLag + 1; lag <= maxLag; lag++) {
+    if (r[lag] >= 0.9 * best && r[lag] >= r[lag - 1] && r[lag] >= r[lag + 1]) {
+      const a = r[lag - 1], b = r[lag], c = r[lag + 1];
+      const shift = (a - c) / (2 * (a - 2 * b + c) || 1);
+      return rate / (lag + clamp(shift, -0.5, 0.5));
+    }
+  }
+  return null;
+}
+
+// ---------- the cat ----------
+const catEl = $("cat"), catWrap = $("cat-wrap"), bubble = $("subtitle");
+const roster = new Map();  // id -> {id, name, tagline}
+let chosen = null;
+const live = { mode: "idle", level: 0, wide: 0, peak: 0 };  // mode: idle | listening | thinking
+const pose = { jaw: 0, mw: 1, ear: 0, wide: 0, lid: 0.4, tilt: 0, lx: 0, ly: 0 };
+const vel = { ear: 0, tilt: 0, lx: 0, ly: 0, wide: 0 };
+const written = {};
+let lidRest = 0.4, pointer = null, blinkAt = 0, blinkStart = -1, lastTs = 0;
+
+function setCoat(id, hop) {
+  catEl.dataset.coat = id;
+  lidRest = parseFloat(getComputedStyle(catEl).getPropertyValue("--lid-rest")) || 0;
+  const cat = roster.get(id);
+  $("cat-title").textContent = cat ? cat.name + ", on stage" : "A cat on stage";
+  if (hop && !reduceMotion.matches) {
+    catWrap.animate([
+      { transform: "none" },
+      { transform: "translateY(0) scale(1.05, 0.95)", offset: 0.18 },
+      { transform: "translateY(-16px) scale(0.97, 1.04)", offset: 0.5 },
+      { transform: "translateY(0) scale(1.03, 0.97)", offset: 0.82 },
+      { transform: "none" },
+    ], { duration: 420, easing: "ease-out" });
   }
 }
 
+// How open the mouth is during one meow, from its kind: m-ee-aa-oo for a meow,
+// a flutter for mrrp, a full gape for yowl, a closed vibrating mouth for purr.
+function mouthAt(e, t, reduce) {
+  const x = (t - e.start) / e.dur;
+  if (x < 0 || x > 1) return null;
+  switch (e.kind) {
+    case "purr": return { jaw: 0, mw: 1, purr: true };
+    case "mew": return { jaw: Math.sin(Math.PI * x) * 0.7 * e.gape, mw: 0.9 };
+    case "yawn": return { jaw: Math.pow(Math.sin(Math.PI * x), 0.7), mw: 0.95, lid: 0.85, tilt: -4 };
+    case "mrrp": {
+      const flutter = reduce ? 0.75 : 0.5 + 0.5 * Math.abs(Math.sin(Math.PI * 11 * t));
+      return { jaw: smooth(0, 0.2, x) * (1 - smooth(0.75, 1, x)) * flutter * e.gape, mw: 0.92 };
+    }
+    case "yowl": {
+      const wobble = reduce ? 1 : 0.93 + 0.07 * Math.sin(2 * Math.PI * 5 * t);
+      return { jaw: smooth(0, 0.15, x) * (1 - smooth(0.85, 1, x)) * wobble, mw: 1.12, tilt: -6 };
+    }
+    default:
+      return { jaw: smooth(0, 0.35, x) * (1 - smooth(0.72, 1, x)) * e.gape, mw: 1.1 - 0.32 * smooth(0.55, 0.95, x) };
+  }
+}
+
+function writeVar(name, value) {
+  const s = value.toFixed(3);
+  if (written[name] !== s) { catEl.style.setProperty(name, s); written[name] = s; }
+}
+
+function frame(ts) {
+  const dt = clamp((ts - lastTs) / 1000 || 0.016, 0.001, 0.05);
+  lastTs = ts;
+  const reduce = reduceMotion.matches;
+  const target = { jaw: 0, mw: 1, ear: 0, wide: 0, lid: lidRest, tilt: 0, lx: 0, ly: 0 };
+  let purr = false;
+
+  if (live.mode === "listening") {
+    target.ear = clamp(live.level * 2.6, 0, 1);
+    live.wide *= Math.exp(-dt / 0.45);
+    target.wide = live.wide;
+    target.lid = Math.min(lidRest, 0.1);
+  } else if (live.mode === "thinking") {
+    Object.assign(target, { lx: 0.6, ly: -0.7, ear: 0.3, tilt: 6 });
+  }
+
+  const a = show.audio;
+  const playing = !!(a && !a.paused && !a.ended);
+  if (playing) {
+    const t = a.currentTime;
+    target.ear = Math.max(target.ear, 0.3);
+    for (const e of show.events) {
+      if (e.start > t) break;
+      const m = mouthAt(e, t, reduce);
+      if (!m) continue;
+      target.jaw = clamp(m.jaw, 0, 1);
+      target.mw = m.mw;
+      if (m.tilt) target.tilt = m.tilt;
+      if (e.rise) target.tilt = 9;
+      if (e.loud) target.wide = 0.5;
+      if (m.purr) { purr = true; target.lid = Math.max(target.lid, 0.62); }
+      if (m.lid) target.lid = Math.max(target.lid, m.lid);
+      break;
+    }
+    const p = show.duration ? t / show.duration : 0;
+    if (show.reaction === "bored") target.lid = Math.max(target.lid, 0.62 * smooth(0.35, 1, p));
+    if (show.reaction === "silent") target.tilt = 10;
+    if (show.reaction === "question" && p > 0.8) target.tilt = 10;
+  }
+
+  if (!reduce && live.mode !== "thinking") {
+    if (!blinkAt) blinkAt = ts + 2000;
+    if (blinkStart < 0 && ts >= blinkAt) blinkStart = ts;
+    if (blinkStart >= 0) {
+      const b = (ts - blinkStart) / 180;
+      if (b >= 1) {
+        blinkStart = -1;
+        blinkAt = ts + (Math.random() < 0.2 ? 200 : 2200 + Math.random() * 4200);
+      } else target.lid = Math.max(target.lid, Math.sin(Math.PI * b));
+    }
+    if (pointer) { target.lx = pointer.x; target.ly = pointer.y; }
+  }
+
+  const follow = (k, rate) => { pose[k] += (target[k] - pose[k]) * (1 - Math.exp(-dt * rate)); };
+  follow("jaw", 55);
+  follow("mw", 20);
+  follow("lid", target.lid > pose.lid ? 45 : 22);
+  if (reduce) {
+    for (const k of ["ear", "tilt", "lx", "ly", "wide"]) follow(k, 14);
+  } else {
+    // Small springs, so ears and head settle with a little life.
+    const springs = { ear: [260, 18], tilt: [120, 15], lx: [170, 24], ly: [170, 24], wide: [420, 34] };
+    const steps = Math.ceil(dt / (1 / 240));
+    const h = dt / steps;
+    for (let s = 0; s < steps; s++) {
+      for (const k in springs) {
+        const [stiff, damp] = springs[k];
+        vel[k] += (stiff * (target[k] - pose[k]) - damp * vel[k]) * h;
+        pose[k] += vel[k] * h;
+      }
+    }
+  }
+
+  writeVar("--jaw", Math.max(0, pose.jaw));
+  writeVar("--mouth-w", pose.mw);
+  writeVar("--ear", pose.ear);
+  writeVar("--wide", Math.max(0, pose.wide));
+  writeVar("--lid", clamp(pose.lid, 0, 1));
+  writeVar("--tilt", pose.tilt);
+  writeVar("--lx", pose.lx);
+  writeVar("--ly", pose.ly);
+  const open = catEl.dataset.mouth === "open" ? pose.jaw > 0.08 : pose.jaw > 0.18;
+  const mouth = open ? "open" : "closed";
+  if (catEl.dataset.mouth !== mouth) catEl.dataset.mouth = mouth;
+  if (purr !== catEl.hasAttribute("data-purr")) catEl.toggleAttribute("data-purr", purr);
+  const state = live.mode !== "idle" ? live.mode : playing ? "speaking" : "idle";
+  if (catEl.dataset.state !== state) catEl.dataset.state = state;
+
+  updatePlayback();
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener("pointermove", (e) => {
+  if (e.pointerType === "touch") return;
+  const r = catEl.getBoundingClientRect();
+  const cx = r.left + r.width * 0.5, cy = r.top + r.height * 0.36;
+  pointer = { x: clamp((e.clientX - cx) / (r.width * 1.4), -1, 1), y: clamp((e.clientY - cy) / (r.height * 1.2), -1, 1) };
+}, { passive: true });
+document.documentElement.addEventListener("mouseleave", () => { pointer = null; });
+
+// ---------- the bubble ----------
+function popBubble() {
+  const from = reduceMotion.matches ? { opacity: 0 } : { opacity: 0, transform: "scale(0.96) translateY(6px)" };
+  bubble.animate([from, { opacity: 1, transform: "none" }], { duration: 220, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+}
+
+function bubbleStart(kind, name) {
+  bubble.replaceChildren();
+  bubble.dataset.kind = kind;
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = name;
+  bubble.appendChild(who);
+}
+
+function bubbleIdle() {
+  const cat = roster.get(chosen);
+  bubbleStart("idle", cat ? cat.name : "Meow Now");
+  const tag = document.createElement("span");
+  tag.className = "tag";
+  tag.textContent = cat ? cat.tagline : "The cats are napping. Try again in a moment.";
+  bubble.appendChild(tag);
+  popBubble();
+}
+
+function bubbleNote(kind, text) {
+  const cat = roster.get(chosen);
+  bubbleStart(kind, cat ? cat.name : "The cat");
+  const tag = document.createElement("span");
+  tag.className = "tag";
+  tag.textContent = text;
+  bubble.appendChild(tag);
+  popBubble();
+}
+
+function bubbleThinking() {
+  const cat = roster.get(chosen);
+  bubbleStart("thinking", cat ? cat.name : "The cat");
+  const dots = document.createElement("span");
+  dots.className = "dots";
+  dots.setAttribute("aria-hidden", "true");
+  dots.append(document.createElement("i"), document.createElement("i"), document.createElement("i"));
+  bubble.appendChild(dots);
+  popBubble();
+}
+
+function bubbleWords(kind, name, words, caption) {
+  bubbleStart(kind, name);
+  if (caption) {
+    const c = document.createElement("span");
+    c.className = "caption";
+    c.textContent = caption;
+    bubble.appendChild(c);
+  }
+  const els = words.map((text) => {
+    const s = document.createElement("span");
+    s.className = "w";
+    s.textContent = text;
+    bubble.append(s, " ");
+    return s;
+  });
+  popBubble();
+  return els;
+}
+
+// ---------- the ribbon ----------
+const ribbonDim = $("ribbon-dim"), ribbonLit = $("ribbon-lit"), ribbonArt = $("ribbon-art");
+const trackEl = $("track"), playedRect = $("played-rect"), playhead = $("playhead");
+const traceEl = $("trace"), traceLevel = $("trace-level");
+const yOf = (hz) => RH - 8 - (Math.log(clamp(hz, LO_HZ, HI_HZ) / LO_HZ) / Math.log(HI_HZ / LO_HZ)) * (RH - 16);
+const pt = (x, y) => x.toFixed(1) + " " + y.toFixed(1);
+
+$("ribbon-grid").innerHTML = [100, 200, 400, 800]
+  .map((hz) => `<line class="grid" x1="0" x2="${RW}" y1="${yOf(hz).toFixed(1)}" y2="${yOf(hz).toFixed(1)}"/>`).join("");
+
+function setRibbon(mode, markup, fade = true) {
+  trackEl.dataset.mode = mode;
+  ribbonDim.innerHTML = markup;
+  ribbonLit.innerHTML = markup;
+  traceEl.setAttribute("d", "");
+  traceLevel.setAttribute("d", "");
+  if (markup && fade) {
+    const from = reduceMotion.matches ? { opacity: 0 } : { opacity: 0, filter: "blur(4px)" };
+    ribbonArt.animate([from, { opacity: 1, filter: "blur(0)" }], { duration: 280, easing: "ease-out" });
+  }
+}
+
+function follow(contour, u) {
+  if (!contour || contour.length < 2) return 1;
+  const p = u * (contour.length - 1), i = Math.min(Math.floor(p), contour.length - 2);
+  return contour[i] + (contour[i + 1] - contour[i]) * (p - i);
+}
+
+// The cat's line mirrors the synthesiser's pitch shape; yours comes from your syllable contour.
+function catShape(u, kind) {
+  if (kind === "mew") return 0.9 + 0.1 * Math.sin(Math.PI * u);
+  return 0.82 + 0.18 * Math.exp(-(((u - 0.35) / 0.3) ** 2)) - 0.12 * u;
+}
+
+function mockRibbon(meows, total) {
+  const sx = (t) => (t / total) * RW;
+  let you = "", cat = "";
+  for (const m of meows) {
+    const dur = Math.max(m.duration, 0.05), steps = 16, up = [], down = [];
+    for (let j = 0; j <= steps; j++) {
+      const u = j / steps, x = sx(m.start + dur * u);
+      let y, hw;
+      if (m.kind === "purr") {
+        y = yOf(330) + 3 * Math.sin(u * Math.PI * 12);
+        hw = 2.5;
+      } else {
+        y = yOf(m.pitch_hz * catShape(u, m.kind) * Math.pow(follow(m.contour, u), 0.8));
+        hw = 0.8 + (1.5 + 5 * (m.loudness ?? 0.8)) * Math.pow(Math.sin(Math.PI * u), 0.6);
+      }
+      up.push(pt(x, y - hw));
+      down.unshift(pt(x, y + hw));
+    }
+    cat += `<path class="cat-line${m.reaction ? " reaction" : ""}" d="M${up.join("L")}L${down.join("L")}Z"/>`;
+    const said = dur / 1.1;  // mockery stretches each syllable by about a tenth
+    if (m.reaction) continue;  // the cat's own addition: there is no line of yours under it
+    if (m.your_pitch_hz) {
+      const c = m.contour && m.contour.length > 1 ? m.contour : [1, 1];
+      const d = c.map((v, j) => pt(sx(m.start + said * (j / (c.length - 1))), yOf(m.your_pitch_hz * v))).join("L");
+      you += `<path class="you-line" d="M${d}"/>`;
+    } else {
+      you += `<path class="you-line unvoiced" d="M${pt(sx(m.start), yOf(75))}L${pt(sx(m.start + said), yOf(75))}"/>`;
+    }
+  }
+  setRibbon("mockery", you + cat);
+}
+
+function wordRibbon(events, total, fade = true) {
+  const sx = (t) => (t / total) * RW;
+  const y = (RH / 2).toFixed(1);
+  // Round caps reach past each end by half the stroke, in screen pixels; pull the ends in so
+  // neighbouring words stay apart at any track width.
+  const cap = 5 * RW / Math.max(trackEl.clientWidth, 1);
+  const ticks = events.map((e) => {
+    const x0 = sx(e.start) + cap, x1 = Math.max(x0, sx(e.start + e.dur) - 1.6 * cap);
+    return `<path class="word-tick${e.loud ? " loud" : ""}" d="M${x0.toFixed(1)} ${y}H${x1.toFixed(1)}"/>`;
+  }).join("");
+  setRibbon("monologue", ticks, fade);
+}
+
+// The live trace scrolls right to left: newest pitch at the right edge.
+let tracePts = [];
+function drawTrace(now) {
+  tracePts = tracePts.filter((p) => now - p.t < TRACE_SECONDS + 0.2);
+  let d = "", lv = "", pen = false;
+  const x0 = (t) => RW - ((now - t) / TRACE_SECONDS) * RW;
+  for (const p of tracePts) {
+    const x = x0(p.t);
+    if (p.hz) { d += pen ? "L" + pt(x, yOf(p.hz)) : "M" + pt(x, yOf(p.hz)) + "h0.1"; pen = true; } else pen = false;
+  }
+  if (tracePts.length > 1) {
+    lv = "M" + pt(x0(tracePts[0].t), RH) + tracePts.map((p) => "L" + pt(x0(p.t), RH - p.level * 34)).join("") +
+      "L" + pt(x0(tracePts[tracePts.length - 1].t), RH) + "Z";
+  }
+  traceEl.setAttribute("d", d);
+  traceLevel.setAttribute("d", lv);
+}
+
+// ---------- the player ----------
+const playBtn = $("play"), timeEl = $("time"), nowShowing = $("now-showing");
+const mockAudio = $("mock-audio"), catAudio = $("cat-audio");
+let show = { audio: null, events: [], words: [], wordEls: [], duration: 0, reaction: null, kind: null };
+let shownKey = "", wordKey = "";
+
+function loadShow(audio, src, opts) {
+  for (const other of [mockAudio, catAudio]) if (other !== audio) other.pause();
+  show = { audio, events: [], words: [], wordEls: [], duration: 0, reaction: null, kind: null, ...opts };
+  shownKey = wordKey = "";
+  audio.src = src;
+  revealStage();
+  trackEl.setAttribute("aria-disabled", "false");
+  trackEl.tabIndex = 0;
+  syncPlayer();
+  audio.play().catch(() => syncPlayer());
+}
+
+// On a phone the stage scrolls away under the controls; bring it back for the show.
+function revealStage() {
+  const stage = document.querySelector(".stage");
+  const r = stage.getBoundingClientRect();
+  if (r.bottom < window.innerHeight * 0.45 || r.top > window.innerHeight * 0.6) {
+    stage.scrollIntoView({ behavior: reduceMotion.matches ? "auto" : "smooth", block: "start" });
+  }
+}
+
+function clearShow() {
+  if (show.audio) show.audio.pause();
+  show = { audio: null, events: [], words: [], wordEls: [], duration: 0, reaction: null, kind: null };
+  shownKey = wordKey = "";
+  setRibbon("empty", "");
+  trackEl.setAttribute("aria-disabled", "true");
+  trackEl.setAttribute("aria-valuetext", "Nothing to play yet");
+  trackEl.tabIndex = -1;
+  nowShowing.textContent = "Ready when you are";
+  timeEl.textContent = "0:00";
+  syncPlayer();
+}
+
+function syncPlayer() {
+  const a = show.audio;
+  const playing = !!(a && !a.paused && !a.ended);
+  playBtn.disabled = !a;
+  playBtn.dataset.state = playing ? "playing" : "paused";
+  playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
+}
+
+function updatePlayback() {
+  const a = show.audio;
+  if (!a) return;
+  const d = show.duration || 0;
+  const t = a.ended ? d : Math.min(a.currentTime, d || a.currentTime);
+  const frac = d ? clamp(t / d, 0, 1) : 0;
+  const key = (frac * RW).toFixed(1) + "|" + Math.floor(t);
+  if (key !== shownKey) {
+    shownKey = key;
+    const x = (frac * RW).toFixed(1);
+    playedRect.setAttribute("width", x);
+    playhead.setAttribute("transform", `translate(${x} 0)`);
+    timeEl.textContent = fmt(t) + " / " + fmt(d);
+    trackEl.setAttribute("aria-valuemax", d.toFixed(1));
+    trackEl.setAttribute("aria-valuenow", t.toFixed(1));
+    trackEl.setAttribute("aria-valuetext", fmt(t) + " of " + fmt(d));
+  }
+  let idx = -1;
+  for (let i = 0; i < show.words.length; i++) {
+    if (show.words[i].start <= t + 0.05) idx = i; else break;
+  }
+  const wk = idx + (a.ended ? "e" : "");
+  if (wk !== wordKey) {
+    wordKey = wk;
+    show.wordEls.forEach((el, i) => {
+      el.classList.toggle("said", i <= idx);
+      el.classList.toggle("now", i === idx && !a.ended);
+    });
+  }
+}
+
+function seekTo(seconds) {
+  const a = show.audio;
+  if (!a || !show.duration) return;
+  a.currentTime = clamp(seconds, 0, show.duration - 0.01);
+  shownKey = wordKey = "";
+}
+
+playBtn.addEventListener("click", () => {
+  const a = show.audio;
+  if (!a) return;
+  if (a.paused || a.ended) {
+    if (a.ended) a.currentTime = 0;
+    a.play().catch(() => syncPlayer());
+  } else a.pause();
+});
+
+trackEl.addEventListener("pointerdown", (e) => {
+  if (!show.audio) return;
+  const r = trackEl.getBoundingClientRect();
+  const at = (ev) => seekTo(((ev.clientX - r.left) / r.width) * show.duration);
+  at(e);
+  trackEl.setPointerCapture(e.pointerId);
+  const move = (ev) => at(ev);
+  trackEl.addEventListener("pointermove", move);
+  trackEl.addEventListener("pointerup", () => trackEl.removeEventListener("pointermove", move), { once: true });
+});
+
+trackEl.addEventListener("keydown", (e) => {
+  const a = show.audio;
+  if (!a) return;
+  const step = e.shiftKey ? 5 : 1;
+  const keys = {
+    ArrowRight: a.currentTime + step, ArrowUp: a.currentTime + step,
+    ArrowLeft: a.currentTime - step, ArrowDown: a.currentTime - step,
+    PageUp: a.currentTime + 5, PageDown: a.currentTime - 5, Home: 0, End: show.duration,
+  };
+  if (e.key in keys) { e.preventDefault(); seekTo(keys[e.key]); }
+});
+
+for (const a of [mockAudio, catAudio]) {
+  for (const type of ["play", "pause", "ended"]) a.addEventListener(type, () => { if (a === show.audio) syncPlayer(); });
+  a.addEventListener("loadedmetadata", () => {
+    // A mockery is drawn on the timeline of your recording; a monologue on its audio.
+    if (a !== show.audio || show.kind !== "monologue" || !isFinite(a.duration)) return;
+    if (Math.abs(a.duration - show.duration) < 0.05) return;
+    show.duration = a.duration;
+    wordRibbon(show.events, show.duration);
+    shownKey = "";
+  });
+}
+
+new ResizeObserver(() => {
+  if (show.kind === "monologue") wordRibbon(show.events, show.duration, false);
+}).observe(trackEl);
+
+// ---------- meow mockery ----------
+const recBtn = $("rec"), recLabel = $("rec-label"), mockStatus = $("mock-status"), ring = $("ring");
+let recorder = null, stream = null, timer = null, meterRaf = null, startedAt = 0;
+
+function meowWord(m, i, n, question) {
+  const words = { mew: "mew", mrrp: "mrrp", yowl: "yooowl", purr: "purrr" };
+  let w = words[m.kind] || (m.duration > 0.5 ? "meeow" : "meow");
+  if (i === 0) w = w[0].toUpperCase() + w.slice(1);
+  if (i === n - 1) w += question ? "?" : (m.loudness > 0.9 ? "!" : ".");
+  return w;
+}
+
+function pitchRange(values) {
+  const v = values.filter((x) => x);
+  return v.length ? [Math.round(Math.min(...v)), Math.round(Math.max(...v))] : null;
+}
+
+// What the cat adds after mimicking you (see the mockery `reaction`), as a subtitle word.
+const REACTION_WORDS = { silent: "Mrrp?", question: "Meh.", bored: "Mrraaawn." };
+
 async function sendRecording(arrayBuffer) {
   setStatus(mockStatus, "Listening back to you...");
-  mockAudio.hidden = true;
+  live.mode = "thinking";
+  bubbleThinking();
   try {
     const samples = await toMono16k(arrayBuffer);
     const data = await postJson("/api/mockery", encodeWav(samples, TARGET_RATE), { "Content-Type": "audio/wav" });
-    const s = data.input_seconds.toFixed(1);
-    const counted = data.meows.length + " meows for " + s + " seconds of you." +
-      (data.truncated ? " (Only the first 60 seconds.)" : "");
+    const meows = data.meows || [];
+    const caption = typeof data.caption === "string" ? data.caption : "";
+    const reaction = data.reaction || "none";
+    const extras = (data.reaction_meows || []).map((m) => ({ ...m, reaction, loudness: 0.55, contour: [] }));
+    const n = meows.length;
+    if (!n && !extras.length) {
+      setStatus(mockStatus, caption || "The cat heard nothing to mock. Try talking a little louder.");
+      bubbleIdle();
+      return;
+    }
+    const counted = n + (n === 1 ? " meow" : " meows") + " for " + data.input_seconds.toFixed(1) +
+      " seconds of you." + (data.truncated ? " (Only the first 60 seconds.)" : "");
     // The silent reaction has nothing to count, so its caption stands alone.
-    setStatus(mockStatus, data.meows.length ? [counted, data.caption].filter(Boolean).join(" ") : data.caption);
-    drawBars(data.meows, data.input_seconds);
-    mockAudio.src = data.audio;
-    mockAudio.hidden = false;
-    mockAudio.play().catch(() => {});
+    setStatus(mockStatus, n ? [counted, caption].filter(Boolean).join(" ") : caption);
+
+    const all = [...meows, ...extras].sort((p, q) => p.start - q.start);
+    const total = Math.max(data.input_seconds, ...all.map((m) => m.start + m.duration), 0.1);
+    const question = reaction === "question";
+    const words = all.map((m) => m.reaction ? REACTION_WORDS[m.reaction] || "Mrrp." : meowWord(m, meows.indexOf(m), n, question));
+    const cat = roster.get(chosen);
+    const wordEls = bubbleWords("mockery", cat ? cat.name : "The cat", words, caption);
+    mockRibbon(all, total);
+    const events = all.map((m) => ({
+      start: m.start, dur: Math.max(m.duration, 0.05),
+      kind: m.reaction === "bored" ? "yawn" : m.kind,
+      gape: clamp((0.45 + 0.55 * (m.loudness ?? 0.8)) * (0.85 + 0.3 * smooth(350, 1200, m.pitch_hz)), 0.3, 1),
+      rise: m.reaction === "silent" || (question && m === meows[n - 1]),
+      loud: m.kind === "yowl" && (m.loudness ?? 0) > 0.95,
+    }));
+    nowShowing.textContent = "Mockery of you";
+    loadShow(mockAudio, data.audio, {
+      kind: "mockery", events, words: all.map((m) => ({ start: m.start })), wordEls,
+      duration: total, reaction,
+    });
+    const yours = pitchRange(meows.map((m) => m.your_pitch_hz)), its = pitchRange(meows.filter((m) => m.kind !== "purr").map((m) => m.pitch_hz));
+    announce([
+      yours ? `You spoke between ${yours[0]} and ${yours[1]} hertz.` : "",
+      its ? `The cat meowed between ${its[0]} and ${its[1]} hertz.` : "",
+    ].filter(Boolean).join(" "));
   } catch (err) {
     setStatus(mockStatus, "Could not do that: " + err.message, true);
+    bubbleIdle();
+  } finally {
+    live.mode = "idle";
   }
 }
 
@@ -232,39 +1194,62 @@ async function startRecording() {
     setStatus(mockStatus, "No microphone: " + err.message, true);
     return;
   }
+  clearShow();
+  bubbleNote("listening", "Go on. I'm listening.");
   const chunks = [];
   recorder = new MediaRecorder(stream);
   recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   recorder.onstop = async () => {
     clearInterval(timer);
     cancelAnimationFrame(meterRaf);
-    $("level").style.width = "0";
+    recBtn.style.setProperty("--lvl", "0");
+    ring.style.strokeDashoffset = "1";
     stream.getTracks().forEach((t) => t.stop());
     $("mockery").classList.remove("recording");
-    recBtn.textContent = "Start talking";
+    recLabel.textContent = "Start talking";
     $("clock").textContent = "";
+    live.level = 0;
     const blob = new Blob(chunks, { type: recorder.mimeType });
     await sendRecording(await blob.arrayBuffer());
   };
 
-  // Live input level, so you can see the cat is listening.
+  // Live input: ears follow your level, and the ribbon draws your pitch as you talk.
   const actx = new (window.AudioContext || window.webkitAudioContext)();
   const analyser = actx.createAnalyser();
+  analyser.fftSize = 2048;
   actx.createMediaStreamSource(stream).connect(analyser);
   const buf = new Float32Array(analyser.fftSize);
+  let lastHz = null;
   const tick = () => {
     analyser.getFloatTimeDomainData(buf);
-    let peak = 0;
-    for (const x of buf) peak = Math.max(peak, Math.abs(x));
-    $("level").style.width = Math.min(100, peak * 140) + "%";
+    let peak = 0, sum = 0;
+    for (const x of buf) { peak = Math.max(peak, Math.abs(x)); sum += x * x; }
+    const level = clamp(Math.sqrt(sum / buf.length) * 6, 0, 1);
+    live.level += (level - live.level) * (level > live.level ? 0.5 : 0.12);
+    if (peak > 0.35 && peak > live.peak * 2.2 + 0.08) live.wide = 1;  // a sudden loud sound
+    live.peak += (peak - live.peak) * 0.1;
+    recBtn.style.setProperty("--lvl", live.level.toFixed(3));
+    // Glide between close estimates; a jump of more than about a fifth starts afresh.
+    const raw = detectPitch(buf, actx.sampleRate);
+    const hz = raw && lastHz && Math.abs(Math.log(raw / lastHz)) < 0.4 ? lastHz * 0.4 + raw * 0.6 : raw;
+    lastHz = hz;
+    const now = performance.now() / 1000;
+    timeEl.textContent = fmt((Date.now() - startedAt) / 1000);
+    tracePts.push({ t: now, hz, level: live.level });
+    drawTrace(now);
+    ring.style.strokeDashoffset = String(clamp((Date.now() - startedAt) / 1000 / MAX_SECONDS, 0, 1));
     if (recorder.state === "recording") meterRaf = requestAnimationFrame(tick);
     else actx.close();
   };
 
   recorder.start();
   startedAt = Date.now();
+  live.mode = "listening";
+  tracePts = [];
+  setRibbon("live", "");
+  nowShowing.textContent = "Listening";
   $("mockery").classList.add("recording");
-  recBtn.textContent = "Done";
+  recLabel.textContent = "Done";
   setStatus(mockStatus, "");
   tick();
   timer = setInterval(() => {
@@ -286,69 +1271,106 @@ $("file").addEventListener("change", async (e) => {
 });
 
 // ---------- talkative cats ----------
-const catStatus = $("cat-status"), catAudio = $("cat-audio"), subtitle = $("subtitle");
-let chosen = null, words = [], wordEls = [];
+const catStatus = $("cat-status");
+
+function selectCat(id, hop) {
+  if (!roster.has(id)) return;
+  const changed = id !== chosen;
+  chosen = id;
+  for (const b of $("cats").children) b.setAttribute("aria-pressed", String(b.dataset.id === id));
+  setCoat(id, hop && changed);
+  if (!changed) return;
+  if (show.kind === "monologue") clearShow();
+  if (show.kind === "mockery") bubble.querySelector(".who").textContent = roster.get(id).name;
+  else if (live.mode !== "thinking") bubbleIdle();
+}
 
 async function loadCats() {
   const res = await fetch("/api/cats");
   const data = await res.json();
   const box = $("cats");
+  const head = catEl.querySelector(".head").cloneNode(true);
+  head.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
   for (const cat of data.cats) {
+    roster.set(cat.id, cat);
     const b = document.createElement("button");
+    b.type = "button";
     b.className = "cat";
+    b.dataset.id = cat.id;
     b.setAttribute("aria-pressed", "false");
+    const face = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    face.setAttribute("class", "cat-art face");
+    face.setAttribute("viewBox", "84 26 232 206");
+    face.setAttribute("aria-hidden", "true");
+    face.dataset.coat = cat.id;
+    face.appendChild(head.cloneNode(true));
     const name = document.createElement("strong");
     name.textContent = cat.name;
     const tag = document.createElement("span");
     tag.textContent = cat.tagline;
-    b.append(name, tag);
-    b.addEventListener("click", () => {
-      chosen = cat.id;
-      for (const other of box.children) other.setAttribute("aria-pressed", String(other === b));
-    });
+    b.append(face, name, tag);
+    b.addEventListener("click", () => selectCat(cat.id, true));
     box.appendChild(b);
   }
-  if (box.firstChild) box.firstChild.click();
+  if (data.cats.length) selectCat(data.cats[0].id, false);
+}
+
+// The monologue gives word starts only, so each meow's length is estimated the way the
+// server paces speech: about (0.1 + 0.05 per letter) / tempo seconds, never past the next word.
+function wordEvents(words, total) {
+  const letters = (w) => w.replace(/[^A-Za-z]/g, "").length || 1;
+  const gap = (i) => (i + 1 < words.length ? words[i + 1].start : total - 0.2) - words[i].start;
+  const rates = [];
+  words.forEach((w, i) => {
+    if (i + 1 < words.length && !/[.,;:?!]$/.test(w.word)) rates.push((0.16 + 0.05 * letters(w.word)) / gap(i));
+  });
+  rates.sort((p, q) => p - q);
+  const tempo = rates.length ? clamp(rates[Math.floor(rates.length / 2)], 0.5, 2) : 1;
+  return words.map((w, i) => {
+    let dur = w.duration || clamp((0.1 + 0.05 * letters(w.word)) / tempo, 0.1, 0.8);
+    dur = Math.max(0.08, Math.min(dur, gap(i) - 0.03));
+    const kind = w.kind || (dur < 0.18 ? "mew" : dur > 0.75 ? "yowl" : "meow");
+    const loud = /!$/.test(w.word);
+    return { start: w.start, dur, kind, gape: loud ? 1 : 0.8, rise: /\?$/.test(w.word), loud };
+  });
 }
 
 async function talk(catId) {
   $("speak").disabled = $("random").disabled = true;
   setStatus(catStatus, "Clearing its throat...");
+  if (catId !== "random") { clearShow(); live.mode = "thinking"; bubbleThinking(); }
   try {
     const data = await postJson("/api/cats/" + encodeURIComponent(catId) + "/monologue");
-    subtitle.replaceChildren();
-    const who = document.createElement("span");
-    who.className = "who";
-    who.textContent = data.cat.name;
-    subtitle.appendChild(who);
-    words = data.words;
-    wordEls = words.map((w) => {
-      const s = document.createElement("span");
-      s.className = "w";
-      s.textContent = w.word + " ";
-      subtitle.appendChild(s);
-      return s;
-    });
+    live.mode = "idle";
+    if (roster.has(data.cat.id)) selectCat(data.cat.id, true);
+    const words = data.words;
+    const last = words[words.length - 1];
+    const total = last ? last.start + 1 : 1;
+    const events = wordEvents(words, total);
+    const wordEls = bubbleWords("monologue", data.cat.name, words.map((w) => w.word));
+    wordRibbon(events, total);
     setStatus(catStatus, data.source === "ollama" ? "Freshly improvised." : "");
-    catAudio.src = data.audio;
-    catAudio.hidden = false;
-    catAudio.play().catch(() => {});
+    nowShowing.textContent = data.cat.name;
+    loadShow(catAudio, data.audio, { kind: "monologue", events, words, wordEls, duration: total });
+    announce(data.cat.name + " says: " + data.text);
   } catch (err) {
+    live.mode = "idle";
     setStatus(catStatus, "The cat refused: " + err.message, true);
+    bubbleIdle();
   } finally {
     $("speak").disabled = $("random").disabled = false;
   }
 }
 
-catAudio.addEventListener("timeupdate", () => {
-  const t = catAudio.currentTime;
-  words.forEach((w, i) => wordEls[i].classList.toggle("said", w.start <= t + 0.05));
-});
-catAudio.addEventListener("ended", () => wordEls.forEach((el) => el.classList.add("said")));
-
 $("speak").addEventListener("click", () => talk(chosen || "random"));
 $("random").addEventListener("click", () => talk("random"));
-loadCats().catch((err) => setStatus(catStatus, "Could not load the cats: " + err.message, true));
+
+bubbleIdle();
+requestAnimationFrame(frame);
+loadCats().catch((err) => {
+  setStatus(catStatus, "Could not load the cats: " + err.message, true);
+  bubbleIdle();
+});
 </script>
 </body>
 </html>
