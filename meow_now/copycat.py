@@ -379,8 +379,10 @@ def _dp(
 ) -> tuple[float, float, float, dict[int, tuple[int, int]]]:
     """Align at each candidate tempo a[c] and offset b[c] (syllable time = a * cat time + b)."""
     n = len(onsets)
-    cost = [[np.zeros(len(a))] * (count + 1) for _ in range(n + 1)]
-    back = [[np.zeros(len(a), dtype=np.int64)] * (count + 1) for _ in range(n + 1)]
+    # Every cell gets its own arrays. _cell never writes into them in place, but no cell should
+    # even appear to share storage with another.
+    cost = [[np.zeros(len(a)) for _ in range(count + 1)] for _ in range(n + 1)]
+    back = [[np.zeros(len(a), dtype=np.int64) for _ in range(count + 1)] for _ in range(n + 1)]
     for i in range(n + 1):
         for j in range(count + 1):
             if i or j:
