@@ -29,6 +29,21 @@ def voiced_burst(pitch: float, seconds: float, rate: int = RATE) -> np.ndarray:
     return (tone * np.hanning(len(t)) * 0.4).astype(np.float32)
 
 
+def gliding_burst(start: float, end: float, seconds: float, rate: int = RATE) -> np.ndarray:
+    """A crude vowel whose pitch glides from `start` to `end` Hz, like a question or a sigh."""
+    n = int(seconds * rate)
+    f0 = np.linspace(start, end, n)
+    phase = 2 * np.pi * np.cumsum(f0) / rate
+    tone = sum(np.sin(k * phase) / k for k in range(1, 6))
+    return (tone * np.hanning(n) * 0.4).astype(np.float32)
+
+
+def ending_with(x: np.ndarray, last: np.ndarray, gap_s=0.15, rate: int = RATE) -> np.ndarray:
+    """Speech `x` followed by one more syllable `last` and a short silence."""
+    gap = np.zeros(int(gap_s * rate), dtype=np.float32)
+    return np.concatenate([x, last, gap])
+
+
 def speech_like(pitches, syllable_s=0.25, gap_s=0.15, rate: int = RATE) -> np.ndarray:
     """Syllables at the given pitches with silence between them."""
     gap = np.zeros(int(gap_s * rate), dtype=np.float32)

@@ -9,10 +9,12 @@ import socket
 import threading
 import time
 
+import numpy as np
 import pytest
 import uvicorn
 from playwright.sync_api import Page, expect
 
+from meow_now.audio import encode_wav
 from meow_now.web import Settings, create_app
 
 # Checked in the page rather than with expect(), so a failure does not print a huge data URL.
@@ -89,6 +91,24 @@ def test_record_then_stop_shows_mockery(home: Page):
     assert home.locator("#bars i").evaluate_all(
         "bars => bars.some((b) => b.style.height !== '2px')"
     )
+
+
+def test_silent_recording_shows_the_caption(home: Page):
+    # The fake microphone always beeps, so swap the upload for a second of silence.
+    silence = encode_wav(np.zeros(16_000, dtype=np.float32), 16_000)
+    home.route(
+        "**/api/mockery*", lambda route: route.fulfill(response=route.fetch(post_data=silence))
+    )
+    rec = home.locator("#rec")
+    rec.click()
+    expect(rec).to_have_text("Done")
+    home.wait_for_timeout(1000)
+    rec.click()
+    status = home.locator("#mock-status")
+    expect(status).to_have_text("The cat waited. So did you.", timeout=15000)
+    expect(status).not_to_have_class(re.compile("error"))
+    expect(home.locator("#mock-audio")).to_be_visible()
+    assert home.locator("#mock-audio").evaluate(WAV_SRC)
 
 
 def test_talkative_cat_plays_with_subtitles(home: Page):

@@ -1,8 +1,9 @@
 import asyncio
 import base64
 
+import numpy as np
 import pytest
-from conftest import RATE, speech_like
+from conftest import RATE, ending_with, gliding_burst, speech_like
 from fastapi.testclient import TestClient
 
 from meow_now.audio import decode_wav, encode_wav
@@ -40,8 +41,33 @@ def test_mockery_round_trip(client):
     data = resp.json()
     assert len(data["meows"]) == 3
     assert data["truncated"] is False
+    assert data["reaction"] == "none"
+    assert data["caption"] is None
+    assert data["reaction_meows"] == []
     samples, rate = _decode_data_url(data["audio"])
     assert rate == 16_000 and len(samples) > 0
+
+
+def test_mockery_silent_upload_is_the_silent_treatment(client):
+    wav = encode_wav(np.zeros(RATE, dtype=np.float32), RATE)
+    resp = client.post("/api/mockery?seed=5", content=wav, headers={"content-type": "audio/wav"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["meows"] == []
+    assert data["reaction"] == "silent"
+    assert data["caption"] == "The cat waited. So did you."
+    (mrrp,) = data["reaction_meows"]
+    assert mrrp["kind"] == "mrrp" and mrrp["start"] >= 1.0
+    samples, _ = _decode_data_url(data["audio"])
+    assert len(samples) / 16_000 > mrrp["start"]
+
+
+def test_mockery_question_reaction(client):
+    x = ending_with(speech_like([150, 160, 140]), gliding_burst(140, 230, 0.4))
+    data = client.post("/api/mockery?seed=2", content=encode_wav(x, RATE)).json()
+    assert data["reaction"] == "question"
+    assert isinstance(data["caption"], str) and data["caption"]
+    assert len(data["meows"]) == 4 and len(data["reaction_meows"]) == 1
 
 
 def test_mockery_seed_is_reproducible(client):
