@@ -64,7 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     @app.post("/api/mockery")
-    async def mockery(request: Request) -> JSONResponse:
+    async def mockery(request: Request, seed: int | None = Query(None, ge=0)) -> JSONResponse:
         """Body: a PCM WAV recording (Content-Type audio/wav), up to 60 seconds."""
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > settings.max_upload_bytes:
@@ -83,10 +83,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if rate < 8000:
             raise HTTPException(415, f"sample rate {rate} Hz is too low; use 8000 Hz or more")
 
-        result = await run_in_threadpool(mock, samples, rate, secrets.randbelow(1 << 30))
+        seed = secrets.randbelow(1 << 30) if seed is None else seed
+        result = await run_in_threadpool(mock, samples, rate, seed)
         return JSONResponse(
             {
                 "audio": _data_url(result.audio),
+                "seed": seed,
                 "input_seconds": round(min(result.analysis.duration, MAX_INPUT_S), 2),
                 "truncated": result.analysis.duration > MAX_INPUT_S,
                 "meows": [
@@ -96,6 +98,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "pitch_hz": round(m.pitch, 1),
                         "your_pitch_hz": round(s.pitch, 1) if s.pitch else None,
                         "kind": m.kind,
+                        "contour": [round(c, 3) for c in s.contour],
+                        "loudness": round(s.loudness, 3),
                     }
                     for s, m in zip(result.analysis.syllables, result.meows, strict=True)
                 ],
