@@ -2,7 +2,7 @@
 
 Each cat gets a monologue, from a local Ollama model when OLLAMA_URL is set
 and from its own built-in lines otherwise, then "speaks" it: one meow per
-word, paced and pitched by personality, with the English as a subtitle.
+word, paced, pitched and voiced by personality, with the English as a subtitle.
 """
 
 from __future__ import annotations
@@ -23,6 +23,23 @@ MAX_WORDS = 45  # about 15 seconds of meowing
 
 
 @dataclass(frozen=True)
+class Voice:
+    """How a cat sounds beyond its pitch and pace. Each field but `kinds` maps onto a Meow field."""
+
+    formant_scale: float = 1.0  # vocal tract size: below 1 is a bigger cat, lower and darker
+    breathiness: float = meows.DEFAULT_BREATHINESS  # 0..1, airy breath and a softer top end
+    roughness: float = 0.0  # 0..1, subharmonics and an unsteady voice: a growl
+    vibrato_rate: float = meows.DEFAULT_VIBRATO_HZ  # Hz, on meows long enough to hold a note
+    vibrato_depth: float = meows.DEFAULT_VIBRATO_DEPTH  # fraction of the pitch
+    kinds: tuple[str, ...] = ()  # kinds this cat reaches for more often than word length says
+
+    def __post_init__(self) -> None:
+        unknown = set(self.kinds) - set(meows.KINDS)
+        if unknown:
+            raise ValueError(f"unknown meow kinds: {sorted(unknown)}")
+
+
+@dataclass(frozen=True)
 class Cat:
     id: str
     name: str
@@ -32,6 +49,7 @@ class Cat:
     wobble: float  # how much the pitch wanders from word to word, 0..1
     style: str  # one-line character note for the language model
     lines: tuple[str, ...]
+    voice: Voice = Voice()
 
 
 CATS: dict[str, Cat] = {
@@ -44,6 +62,15 @@ CATS: dict[str, Cat] = {
             pitch=430.0,
             tempo=0.85,
             wobble=0.08,
+            # A big old tom: long tract, a growl, and a grumbling "mrrp" for most things.
+            voice=Voice(
+                formant_scale=0.84,
+                breathiness=0.12,
+                roughness=0.6,
+                vibrato_rate=4.8,
+                vibrato_depth=0.006,
+                kinds=("mrrp",),
+            ),
             style="deeply unimpressed, complains about dinner, humans and Mondays",
             lines=(
                 "Oh. It is you. Do you know what time it is? It is four minutes past dinner. "
@@ -80,6 +107,15 @@ CATS: dict[str, Cat] = {
             pitch=520.0,
             tempo=0.75,
             wobble=0.12,
+            # An elderly scholar: airy and soft-edged, given to a thoughtful purr.
+            voice=Voice(
+                formant_scale=0.94,
+                breathiness=0.5,
+                roughness=0.1,
+                vibrato_rate=5.0,
+                vibrato_depth=0.012,
+                kinds=("purr",),
+            ),
             style="a slow, serene philosopher who speaks in riddles about naps and sunbeams",
             lines=(
                 "The sunbeam moves, and so I move. Is it the sun that wanders, or the cat? "
@@ -115,6 +151,15 @@ CATS: dict[str, Cat] = {
             pitch=780.0,
             tempo=1.35,
             wobble=0.25,
+            # Small and thin-voiced, breathy with nerves, a fast tremble, and lots of mews.
+            voice=Voice(
+                formant_scale=1.2,
+                breathiness=0.35,
+                roughness=0.0,
+                vibrato_rate=6.0,
+                vibrato_depth=0.03,
+                kinds=("mew",),
+            ),
             style="jittery and worried about the vacuum, cucumbers and the doorbell",
             lines=(
                 "Did you hear that? That was the vacuum. I know it was the vacuum. It is in the "
@@ -150,6 +195,15 @@ CATS: dict[str, Cat] = {
             pitch=650.0,
             tempo=0.95,
             wobble=0.35,
+            # A trained voice: clear, ringing and bright, with an operatic vibrato.
+            voice=Voice(
+                formant_scale=1.0,
+                breathiness=0.05,
+                roughness=0.0,
+                vibrato_rate=5.6,
+                vibrato_depth=0.035,
+                kinds=("yowl",),
+            ),
             style="a dramatic diva who demands admiration and only the finest salmon",
             lines=(
                 "Darling. You are late. I was ready for my portrait an hour ago, and now the "
@@ -238,7 +292,7 @@ def ask_ollama(cat: Cat, url: str, model: str, timeout: float = 20.0) -> str | N
 
 
 def speak(cat: Cat, text: str, seed: int = 0) -> tuple[np.ndarray, tuple[tuple[str, float], ...]]:
-    """Turn text into cat speech: one meow per word, paced like a sentence."""
+    """Turn text into cat speech: one meow per word, paced like a sentence, in the cat's voice."""
     rng = np.random.default_rng(seed)
     clips: list[tuple[float, np.ndarray]] = []
     timing: list[tuple[str, float]] = []
@@ -256,12 +310,18 @@ def speak(cat: Cat, text: str, seed: int = 0) -> tuple[np.ndarray, tuple[tuple[s
             loud, pitch = 1.0, pitch * 1.15
         elif word.endswith((".", "...")):
             contour = (1.05, 1.0, 0.95, 0.85, 0.75)  # statements land
+        voice = cat.voice
         meow = meows.Meow(
             pitch=float(np.clip(pitch, 300, 1300)),
             duration=duration,
             loudness=loud,
-            kind=meows.kind_for(duration, rng),
+            kind=meows.kind_for(duration, rng, voice.kinds),
             contour=contour,
+            formant_scale=voice.formant_scale,
+            breathiness=voice.breathiness,
+            roughness=voice.roughness,
+            vibrato_rate=voice.vibrato_rate,
+            vibrato_depth=voice.vibrato_depth,
         )
         clips.append((t, meows.synthesize(meow, SAMPLE_RATE, seed=seed * 1000 + i)))
         timing.append((word, round(t, 3)))

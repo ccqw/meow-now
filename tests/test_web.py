@@ -6,7 +6,7 @@ import pytest
 from conftest import RATE, ending_with, gliding_burst, speech_like
 from fastapi.testclient import TestClient
 
-from meow_now.audio import decode_wav, encode_wav
+from meow_now.audio import SAMPLE_RATE, decode_wav, encode_wav
 from meow_now.web import Settings, create_app
 
 
@@ -45,7 +45,7 @@ def test_mockery_round_trip(client):
     assert data["caption"] is None
     assert data["reaction_meows"] == []
     samples, rate = _decode_data_url(data["audio"])
-    assert rate == 16_000 and len(samples) > 0
+    assert rate == SAMPLE_RATE and len(samples) > 0
 
 
 def test_mockery_silent_upload_is_the_silent_treatment(client):
@@ -58,8 +58,9 @@ def test_mockery_silent_upload_is_the_silent_treatment(client):
     assert data["caption"] == "The cat waited. So did you."
     (mrrp,) = data["reaction_meows"]
     assert mrrp["kind"] == "mrrp" and mrrp["start"] >= 1.0
-    samples, _ = _decode_data_url(data["audio"])
-    assert len(samples) / 16_000 > mrrp["start"]
+    samples, rate = _decode_data_url(data["audio"])
+    assert rate == SAMPLE_RATE
+    assert len(samples) / rate > mrrp["start"]
 
 
 def test_mockery_question_reaction(client):
@@ -170,3 +171,12 @@ def test_single_meow(client):
     samples, rate = decode_wav(resp.content)
     assert len(samples) == int(0.3 * rate)
     assert client.get("/api/meow?kind=woof").status_code == 422
+
+
+def test_single_purr(client):
+    resp = client.get("/api/meow?duration=1.0&kind=purr&seed=3")
+    assert resp.status_code == 200
+    samples, rate = decode_wav(resp.content)
+    assert rate == SAMPLE_RATE
+    assert len(samples) == int(1.0 * rate)
+    assert 0.5 < max(abs(samples)) <= 0.9 + 1e-3

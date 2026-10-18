@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from conftest import RATE, ending_with, gliding_burst, speech_like
+from conftest import RATE, cat_pitch_track, ending_with, gliding_burst, speech_like
 
 from meow_now.analysis import Syllable
 from meow_now.audio import SAMPLE_RATE
@@ -168,3 +168,19 @@ def test_high_sample_rate_input_is_analyzed_the_same():
     a, b = mock(x16, RATE), mock(x48, 48_000)
     assert len(a.meows) == len(b.meows) == 3
     assert abs(b.analysis.duration - a.analysis.duration) < 0.01
+
+
+def test_mockery_meows_follow_the_speakers_pitch():
+    pitches = [110, 140, 175, 220]
+    result = mock(speech_like(pitches), RATE, seed=5)
+    track = cat_pitch_track(result.audio, SAMPLE_RATE)
+    heard = []
+    for syl in result.analysis.syllables:
+        frames = track[int(syl.start / 0.01) : int((syl.start + syl.duration) / 0.01)]
+        heard.append(float(np.median(frames[frames > 0])))
+    planned = [m.pitch for m in result.meows]
+    # Measured from the rendered audio: each meow is higher than the last, and
+    # sits close to where it was planned (a meow's pitch arc peaks at `pitch`).
+    assert heard == sorted(heard)
+    for got, want in zip(heard, planned, strict=True):
+        assert 0.75 * want < got < 1.05 * want
