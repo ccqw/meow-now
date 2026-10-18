@@ -230,26 +230,39 @@ def test_monologue_link_skips_ollama(monkeypatch):
     assert linked["text"] == cats.CATS["diva"].lines[3 % len(cats.CATS["diva"].lines)]
 
 
-def test_speak_says_your_words(client):
-    resp = client.post("/api/speak?seed=4", json={"text": "Feed me,  human. Now?", "cat": "wise"})
+SPOKEN = {"text": "Feed me,  human. Now?", "cat": "wise"}
+
+
+def _speak(client, body=SPOKEN, seed=4):
+    resp = client.post(f"/api/speak?seed={seed}", json=body)
     assert resp.status_code == 200
-    data = resp.json()
+    return resp.json()
+
+
+def test_speak_says_your_words(client):
+    data = _speak(client)
     assert set(data) == {"cat", "text", "source", "seed", "words", "audio", "truncated"}
     assert data["cat"]["id"] == "wise" and data["cat"]["name"] == "Professor Whiskers"
     assert data["text"] == "Feed me, human. Now?"
     assert data["source"] == "typed" and data["seed"] == 4 and data["truncated"] is False
     assert [w["word"] for w in data["words"]] == ["Feed", "me,", "human.", "Now?"]
+
+
+def test_speak_words_carry_monologue_timing(client):
     # The same word fields as a monologue, so the stage cat's jaw follows the real meows.
-    for w in data["words"]:
-        assert set(w) == {"word", "start", "duration", "kind"}
-        assert 0.1 <= w["duration"] <= 0.8 and w["kind"] in {"mew", "meow", "mrrp", "yowl", "purr"}
-    starts = [w["start"] for w in data["words"]]
+    words = _speak(client)["words"]
+    assert all(set(w) == {"word", "start", "duration", "kind"} for w in words)
+    assert all(0.1 <= w["duration"] <= 0.8 for w in words)
+    assert {w["kind"] for w in words} <= {"mew", "meow", "mrrp", "yowl", "purr"}
+    starts = [w["start"] for w in words]
     assert starts == sorted(starts) and starts[0] > 0
+
+
+def test_speak_audio_covers_the_words_and_replays_from_the_seed(client):
+    data = _speak(client)
     samples, rate = _decode_data_url(data["audio"])
-    assert rate == SAMPLE_RATE and len(samples) / rate > starts[-1]
-    # Same text, cat and seed: the same performance.
-    again = client.post("/api/speak?seed=4", json={"text": "Feed me, human. Now?", "cat": "wise"})
-    assert again.json() == data
+    assert rate == SAMPLE_RATE and len(samples) / rate > data["words"][-1]["start"]
+    assert _speak(client) == data
 
 
 def test_speak_defaults_to_a_random_cat(client):
