@@ -69,13 +69,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > settings.max_upload_bytes:
             raise HTTPException(413, "recording too large")
-        body = await request.body()
-        if len(body) > settings.max_upload_bytes:
-            raise HTTPException(413, "recording too large")
+        body = bytearray()
+        async for chunk in request.stream():
+            body += chunk
+            if len(body) > settings.max_upload_bytes:
+                raise HTTPException(413, "recording too large")
         if not body:
             raise HTTPException(400, "send a WAV recording as the request body")
         try:
-            samples, rate = decode_wav(body)
+            samples, rate = decode_wav(bytes(body))
         except AudioError as exc:
             raise HTTPException(415, str(exc)) from exc
         if rate < 8000:
