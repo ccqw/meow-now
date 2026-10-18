@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meow-now"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Talk to a cat: speech in, meows out. Plus four cats with opinions."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -21,6 +21,9 @@ dev = ["pytest>=8,<9", "ruff>=0.6"]
 
 [project.scripts]
 meow-now = "meow_now.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "meow_now.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["meow_now*"]

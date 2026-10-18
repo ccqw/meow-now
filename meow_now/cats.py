@@ -136,13 +136,17 @@ def _clean(text: str) -> str:
     return text
 
 
+def ollama_prompt(cat: Cat) -> str:
+    return (
+        f"You are {cat.name}, a cat who is {cat.style}. Speak to the visitor who just "
+        f"stopped by to listen, in character, in 2 to 4 short sentences and under {MAX_WORDS} "
+        "words. No stage directions, no emoji, no quotation marks. Just what you say."
+    )
+
+
 def ask_ollama(cat: Cat, url: str, model: str, timeout: float = 20.0) -> str | None:
     """One monologue from Ollama, or None if it is unreachable or says nothing useful."""
-    prompt = (
-        f"You are {cat.name}, a cat who is {cat.style}. Speak to the person who just "
-        f"called you, in character, in 2 to 4 short sentences and under {MAX_WORDS} words. "
-        "No stage directions, no emoji, no quotation marks. Just what you say."
-    )
+    prompt = ollama_prompt(cat)
     try:
         resp = httpx.post(
             f"{url.rstrip('/')}/api/generate",
