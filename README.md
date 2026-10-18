@@ -1,387 +1,206 @@
-# Meow-Now: Self-Hosted Cat Voicemail System
+# Meow Now
 
-A voice-based automated call tree system that turns your phone number into a cat-themed interactive experience. Callers can choose between:
+Talk to a cat. Speech in, meows out.
 
-1. **Meow Mockery** - Real-time voice-to-meow converter that mimics the caller's pitch and rhythm (max 60 seconds)
-2. **Talkative Cats** - Multiple cat personalities that deliver 15-second monologues
+Meow Now is a small, self-hosted web app with two experiences:
 
-Perfect for pranks, art projects, or just having fun with your phone number!
+1. **Meow Mockery.** Talk for up to 60 seconds. A cat repeats it back to you:
+   one meow for each syllable, in time with you, rising where your voice rose
+   and falling where it fell. No words survive.
+2. **Talkative Cats.** Four cats with opinions (grumpy, wise, anxious and a
+   diva) each deliver a short monologue, entirely in meows, with English
+   subtitles that light up word by word. Point it at a local
+   [Ollama](https://ollama.com) model and the cats improvise; without one they
+   use their own built-in lines.
 
-## Features
+Everything runs locally: no cloud APIs, no accounts, no per-minute costs, and
+no audio is stored. Recordings are processed in memory and sent straight back.
 
-- **Zero per-minute costs** - Fully self-hosted, no cloud API fees
-- **Real-time pitch/rhythm matching** - Meows that actually mock the caller's voice
-- **Multiple cat personalities** - Grumpy, Wise, Anxious, and Diva cats with unique voices
-- **Ollama LLM integration** - Dynamic cat responses using your local LLM over Tailscale
-- **Docker/Unraid ready** - Easy deployment with docker-compose
-- **Professional IVR system** - Call tree routing with audio prompts
-- **Local TTS** - Piper and Coqui TTS support, no cloud required
+## Quick start
 
-## 🆕 Status: Ready for Production Deployment!
+With Docker (or Podman):
 
-**Just Completed:**
-- ✅ Realistic cat meow generation (5 different meow types: short, long, trill, chirp, yowl)
-- ✅ Complete IVR system with audio prompts
-- ✅ Production-ready Docker setup with Asterisk
-- ✅ Comprehensive deployment guide (DEPLOYMENT.md)
-- ✅ Automated setup scripts (scripts/setup_audio.py, scripts/deploy.sh)
-- ✅ Full Asterisk integration with AGI server
-- ✅ All service modules implemented and tested
-
-**See [DEPLOYMENT.md](DEPLOYMENT.md) for complete production deployment instructions!**
-
-## Demo
-
-```
-☎️  Caller dials your number
-    ↓
-🎵  "Welcome to Meow Now! Press 1 for meow mockery, 2 for talkative cats"
-    ↓
-1️⃣  Option 1: Meow Mockery
-    - Caller talks for up to 60 seconds
-    - System analyzes pitch and rhythm
-    - Plays back REALISTIC cat meows matching their voice (not robotic!)
-    - Uses advanced waveform synthesis with harmonics
-    - Automatic hangup after playback
-    ↓
-2️⃣  Option 2: Talkative Cats
-    - System picks random cat personality
-    - Cat delivers 15-second monologue (via Ollama LLM or pre-written)
-    - Grumpy cat complains about delayed dinner
-    - Wise cat shares philosophical insights
-    - Anxious cat panics about the vacuum
-    - Diva cat demands proper admiration
-    - Automatic hangup
+```sh
+docker build -t meow-now .
+docker run --rm -p 8080:8080 meow-now
 ```
 
-## Architecture
+or `docker compose up --build`, which also reads an optional `.env` file
+(see [Configuration](#configuration)).
 
-```
-NumberBarn Phone Number (SIP Trunk)
-          ↓
-   Asterisk (Docker Container)
-          ↓
-   Python Flask App (AGI Server)
-          ↓
-   ├─ Voice Analyzer (pitch/rhythm detection)
-   ├─ Meow Synthesizer (real-time generation)
-   ├─ Cat Personalities (Ollama LLM)
-   └─ Local TTS (Piper/Coqui)
+Then open <http://localhost:8080> and press **Start talking**.
+
+From source (Python 3.11 or newer):
+
+```sh
+python -m venv .venv && . .venv/bin/activate
+pip install -e '.[dev]'
+meow-now serve            # http://localhost:8080
 ```
 
-## Prerequisites
+There is also an offline converter, handy for testing with a recording:
 
-- **Unraid server** (or any Docker host)
-- **Phone number** with [NumberBarn](https://www.numberbarn.com/) (~$2-5/month)
-- **Static IP or DDNS** for your home network
-- **Port forwarding** on your router (5060 UDP, 10000-10099 UDP)
-- **(Optional)** Ollama running on local network/Tailscale
-
-## Quick Start
-
-### Test Locally First (No Phone Required!)
-
-Try it on your laptop using your microphone:
-
-```bash
-# 1. Install dependencies
-pip install -r requirements.txt
-
-# 2. Start test interface
-python test_interface.py
-
-# 3. Open browser
-# Go to: http://localhost:5001
-
-# 4. Click "Start Call" and test!
+```sh
+meow-now mock hello.wav hello-meow.wav
 ```
 
-See [TESTING.md](TESTING.md) for complete local testing guide.
-
-### Deploy to Production
-
-See [QUICKSTART.md](QUICKSTART.md) for detailed setup instructions.
-
-```bash
-# 1. Clone repository
-git clone [this-repo-url]
-cd meow-now
-
-# 2. Configure
-cp .env.example .env
-nano .env  # Add your Ollama URL if using
-
-# 3. Deploy with Docker
-docker-compose up -d
-
-# 4. Configure NumberBarn
-# Set call forwarding to: sip:YOUR_IP:5060
-
-# 5. Call your number!
-```
-
-## Documentation
-
-- **[TESTING.md](TESTING.md)** - Test locally with your laptop microphone (start here!)
-- **[QUICKSTART.md](QUICKSTART.md)** - Get running in 15 minutes
-- **[docs/SETUP.md](docs/SETUP.md)** - Complete setup guide with troubleshooting
-- **[docs/NUMBERBARN.md](docs/NUMBERBARN.md)** - NumberBarn SIP configuration
-- **[CHECKLIST.md](CHECKLIST.md)** - Setup verification checklist
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and design
-
-## Project Structure
-
-```
-meow-now/
-├── app.py                      # Main Flask application
-├── agi_server.py              # AGI server for Asterisk integration
-├── config/
-│   ├── asterisk/              # Asterisk dialplan configurations
-│   └── settings.py            # Application settings
-├── services/
-│   ├── ivr.py                 # IVR call tree logic
-│   ├── voice_analyzer.py      # Pitch/rhythm detection
-│   ├── meow_generator.py      # Meow synthesis engine
-│   └── cat_personalities.py   # Cat character definitions
-├── audio/
-│   ├── prompts/               # IVR menu prompts
-│   └── cats/                  # Pre-generated cat audio
-├── models/                    # Local TTS models
-├── docs/                      # Setup documentation
-└── requirements.txt
-```
-
-## Cat Personalities
-
-The system includes 4 unique cat personalities:
-
-### 1. Grumpy Cat 😾
-- **Personality**: Perpetually annoyed, sarcastic, complaining
-- **Voice**: Lower pitch, slower speaking rate
-- **Topics**: Delayed dinner, uncomfortable furniture, noisy neighbors
-- **Example**: "Dinner is THREE MINUTES LATE. Do you have any idea how unacceptable this is?"
-
-### 2. Wise Cat 🧘‍♂️
-- **Personality**: Philosophical, zen master, calm and patient
-- **Voice**: Slightly lower pitch, contemplative pace
-- **Topics**: Perfect napping, philosophy of the red dot, patience in hunting
-- **Example**: "The red dot teaches us profound truths. We chase, yet never catch. Embrace the chase itself."
-
-### 3. Anxious Cat 😰
-- **Personality**: Nervous, worried, catastrophizing everything
-- **Voice**: Higher pitch, faster speaking rate
-- **Topics**: Suspicious sounds, vacuum cleaner fears, routine changes
-- **Example**: "Oh no oh NO! The vacuum! It's in the closet! What if today's the day?!"
-
-### 4. Diva Cat 💅
-- **Personality**: Dramatic, demanding royal treatment, theatrical
-- **Voice**: Higher pitch, dramatic delivery
-- **Topics**: Proper admiration, tuna presentation standards, being fabulous
-- **Example**: "Darling, I'm STUNNING. You can't just glance and move on. I deserve better!"
+> **Microphone note.** Browsers only allow microphone access on `https://`
+> pages and on `localhost`. If you open the app from another machine over
+> plain HTTP, use the **upload a recording** link instead, or put HTTPS in
+> front of it (see [Deploying](#deploying)).
 
 ## Configuration
 
-### Environment Variables
+All settings are environment variables, and all are optional. Copy
+`.env.example` to `.env` for Docker Compose.
 
-Key settings in `.env`:
+| Variable | Default | What it does |
+|---|---|---|
+| `PORT` | `8080` | Port the web server listens on |
+| `HOST` | `127.0.0.1` (`0.0.0.0` in the container image) | Address the web server binds to |
+| `OLLAMA_URL` | unset | Base URL of an Ollama server, e.g. `http://your-ollama-host.internal:11434`. Unset means built-in monologues only |
+| `OLLAMA_MODEL` | `llama3.2` | Ollama model the cats use |
+| `MAX_UPLOAD_MB` | `8` | Largest recording the API accepts. 60 s of 16 kHz mono WAV is about 2 MB |
+| `LOG_LEVEL` | `INFO` | Python log level |
 
-```bash
-# Ollama Integration (optional)
-OLLAMA_URL=http://your-tailscale-host:11434
+If Ollama is unreachable, slow (over 20 s), or replies with something too
+short, the cat quietly falls back to a built-in line. The page shows
+"Freshly improvised." when a monologue came from the model.
 
-# Audio Settings
-SAMPLE_RATE=8000
-MAX_RECORDING_DURATION=60
-CAT_MONOLOGUE_DURATION=15
+## How it works
 
-# TTS Engine
-TTS_ENGINE=piper  # Options: piper, coqui
-
-# Cat Personalities (enable/disable)
-ENABLE_GRUMPY_CAT=True
-ENABLE_WISE_CAT=True
-ENABLE_ANXIOUS_CAT=True
-ENABLE_DIVA_CAT=True
-
-# Voice Analysis
-PITCH_DETECTION_METHOD=praat  # Options: praat, aubio
-MEOW_BASE_PITCH=300
-MEOW_PITCH_VARIANCE=0.3
+```
+browser                                  server (FastAPI + numpy)
+-------                                  ------------------------
+MediaRecorder (webm/opus, mp4, ...)
+  -> decodeAudioData + OfflineAudioContext
+  -> 16 kHz mono 16-bit WAV  ---- POST /api/mockery ---->  analysis.py
+                                                             energy envelope -> syllables
+                                                             autocorrelation -> pitch + contour
+                                                           mockery.py
+                                                             voice pitch -> cat pitch
+                                                           meows.py
+                                                             one synthesized meow per syllable
+  <audio> plays the result  <---- WAV (base64 JSON) -----
 ```
 
-See [docs/SETUP.md](docs/SETUP.md) for complete configuration reference.
+- **No ffmpeg on the server.** The browser decodes whatever it recorded and
+  sends plain PCM WAV, so the server only needs Python's `wave` module and
+  numpy. The image is a slim Python base with four pip dependencies.
+- **Syllables** come from an RMS energy envelope (10 ms frames): loud runs are
+  speech, short dips under 60 ms are bridged so a consonant does not split a
+  syllable, and energy valleys split longer runs ("hello there" becomes four
+  meows, not one).
+- **Pitch** is a normalized autocorrelation per 40 ms frame, with parabolic
+  peak interpolation, searched between 70 and 500 Hz. Each syllable keeps its
+  median pitch and an 8-point contour.
+- **Mapping to cat.** Your median pitch lands at 650 Hz, and each syllable
+  keeps (and slightly exaggerates) how far above or below your median it was,
+  clamped to 350 to 1200 Hz. Questions still go up.
+- **Meows** are additive synthesis: a stack of harmonics on a rising and falling
+  pitch track, each harmonic weighted by its distance to formants that glide
+  through "m-ee-aa-oo", under an envelope that opens from a nasal "m". There
+  are four kinds (`mew`, `meow`, `mrrp` with a rolled start, and a wavering
+  `yowl`), chosen by duration. Synthesis is deterministic for a given seed.
+- **Talkative cats** speak one meow per word, sized by word length and paced
+  by the cat's tempo, with pauses at punctuation and rising contours on
+  questions. The server returns each word's start time for the subtitles.
 
-## Deployment Options
+## API
 
-### Option 1: Docker Compose (Recommended)
+Interactive docs are served at `/api/docs`.
 
-```bash
-docker-compose up -d
+| Method and path | Body / query | Returns |
+|---|---|---|
+| `GET /healthz` | | `{"status": "ok", "version": ...}` |
+| `GET /api/cats` | | The cats, and whether Ollama is configured |
+| `POST /api/mockery` | A PCM WAV file as the raw body (`Content-Type: audio/wav`), at least 8 kHz, any channels; only the first 60 s are used | `{"audio": "data:audio/wav;base64,...", "input_seconds", "truncated", "meows": [{start, duration, pitch_hz, your_pitch_hz, kind}]}` |
+| `POST /api/cats/{id}/monologue` | `id` is `grumpy`, `wise`, `anxious`, `diva` or `random`; optional `?seed=` | `{"cat", "text", "source": "ollama" or "builtin", "words": [{word, start}], "audio"}` |
+| `GET /api/meow` | `pitch` (200 to 1500 Hz), `duration` (0.08 to 2 s), `kind`, `seed` | One meow as `audio/wav` |
+
+Examples:
+
+```sh
+curl -s -X POST --data-binary @hello.wav -H 'Content-Type: audio/wav' \
+  http://localhost:8080/api/mockery | jq '.meows | length'
+
+curl -s -o meow.wav 'http://localhost:8080/api/meow?pitch=800&duration=0.6&kind=mrrp'
 ```
 
-Includes both Meow-Now app and Asterisk in containers.
+Errors are JSON `{"detail": ...}` with status 400 (empty body), 404 (unknown
+cat), 413 (too large), 415 (not a readable WAV, or below 8 kHz) or 422 (bad
+query parameter).
 
-### Option 2: Unraid Community App
+## Deploying
 
-1. Add container via Unraid Docker UI
-2. Configure port mappings and volumes
-3. Start container
+The app is stateless: one small container, no volumes, no database, safe to
+run with a read-only root filesystem and as many replicas as you like. It
+needs about 100 MB of memory and a fraction of a CPU at rest.
 
-### Option 3: Standalone Python
+### Kubernetes
 
-```bash
-pip install -r requirements.txt
-python app.py
+[`deploy/kubernetes/meow-now.yaml`](deploy/kubernetes/meow-now.yaml) has a
+Namespace, Deployment (non-root, read-only root filesystem, all capabilities
+dropped, `/healthz` probes), Service and an example Ingress. Replace the
+`IMAGE` and `HOSTNAME` placeholders, then:
+
+```sh
+kubectl apply -f deploy/kubernetes/meow-now.yaml
+kubectl -n meow-now rollout status deploy/meow-now
 ```
 
-Requires separate Asterisk installation.
+Terminate TLS at your ingress so the microphone works.
+
+### Container images
+
+[`.github/workflows/publish-image.yml`](.github/workflows/publish-image.yml)
+builds `linux/amd64` and `linux/arm64` images, each on its own native
+GitHub-hosted runner (no emulation). On a pull request it builds both without
+pushing and smoke-tests the image. On `main` it pushes
+`ghcr.io/<owner>/<repo>:sha-<commit>`, and on a `v*.*.*` tag it pushes
+`ghcr.io/<owner>/<repo>:<version>`. The run summary prints the full
+`image:tag@digest` to pin in your manifests.
+
+It logs in to GHCR with the workflow's own `GITHUB_TOKEN`, so a fork
+publishes to its own GHCR with no secrets to set up. New GHCR packages start
+private: to pull without credentials, set the package to public once in its
+GitHub package settings.
 
 ## Development
 
-### Project Structure
-
-```
-meow-now/
-├── app.py                      # Flask web interface & startup
-├── agi_server.py              # AGI server for Asterisk integration
-├── config/
-│   ├── asterisk/              # Asterisk configurations
-│   │   ├── extensions.conf    # Dialplan routing
-│   │   ├── sip.conf          # SIP trunk config
-│   │   └── manager.conf      # AMI configuration
-│   └── settings.py            # Application settings
-├── services/
-│   ├── ivr.py                 # IVR call tree logic
-│   ├── voice_analyzer.py      # Pitch/rhythm detection
-│   ├── meow_generator.py      # Meow synthesis engine
-│   └── cat_personalities.py   # Cat character definitions
-├── scripts/
-│   └── generate_audio_prompts.py  # TTS audio generator
-├── audio/
-│   ├── prompts/               # IVR menu audio files
-│   ├── cats/                  # Pre-generated cat audio
-│   ├── recordings/            # Caller recordings (temp)
-│   └── generated/             # Generated meows (temp)
-├── models/
-│   ├── piper/                 # Piper TTS models
-│   └── coqui/                 # Coqui TTS models
-├── docs/
-│   ├── SETUP.md              # Complete setup guide
-│   └── NUMBERBARN.md         # NumberBarn configuration
-├── Dockerfile                 # Docker image definition
-├── docker-compose.yml         # Multi-container setup
-├── requirements.txt           # Python dependencies
-└── .env.example              # Configuration template
+```sh
+pip install -e '.[dev]'
+pytest            # unit and API tests
+ruff check . && ruff format --check .
 ```
 
-### Adding New Cat Personalities
+CI ([`.github/workflows/test.yml`](.github/workflows/test.yml)) runs the same
+commands on Python 3.11, 3.12 and 3.13.
 
-1. Edit `services/cat_personalities.py`
-2. Create new class inheriting from `CatPersonality`
-3. Define personality traits, topics, and fallback monologues
-4. Add to `CAT_REGISTRY`
-5. Enable in `.env`: `ENABLE_YOUR_CAT=True`
+Layout:
 
-Example:
-```python
-class SassyCat(CatPersonality):
-    def __init__(self):
-        super().__init__(
-            name="Sassy",
-            voice_pitch=1.05,
-            speaking_rate=1.1,
-            personality_prompt="You are a sassy, witty cat...",
-            topics=["topic1", "topic2"]
-        )
+```
+meow_now/
+  audio.py      WAV decode/encode, resampling
+  analysis.py   syllables, pitch and contour
+  meows.py      meow synthesis and mixing
+  mockery.py    Meow Mockery: speech -> meows
+  cats.py       Talkative Cats: personalities, Ollama, cat speech
+  web.py        FastAPI app
+  static/       the single-page UI (no build step, no frameworks)
+  __main__.py   `meow-now serve` and `meow-now mock`
+tests/          pytest suite (synthetic speech, no fixtures on disk)
+deploy/         example Kubernetes manifests
 ```
 
-### Running Tests
+## Phone line (not in this version)
 
-```bash
-# Test AGI server
-python -m pytest tests/test_agi.py
-
-# Test voice analyzer
-python -m pytest tests/test_voice.py
-
-# Test meow generator
-python -m pytest tests/test_meow.py
-```
-
-## Troubleshooting
-
-### Common Issues
-
-| Issue | Solution |
-|-------|----------|
-| No incoming calls | Check port forwarding and SIP registration |
-| One-way audio | Forward RTP ports 10000-10099 UDP |
-| Meow mockery silent | Check recording directory permissions |
-| Cats not talking | Verify Piper model exists, check TTS logs |
-| Ollama not connecting | Test connection, verify Tailscale network |
-
-See [docs/SETUP.md](docs/SETUP.md) for detailed troubleshooting.
-
-## Performance
-
-**Tested on**:
-- Unraid server (i5-8400, 16GB RAM)
-- Concurrent calls: 5+ simultaneous
-- CPU usage: ~10-15% per call
-- RAM usage: ~200MB base + 50MB per call
-
-**Optimizations**:
-- Use Piper TTS (lighter than Coqui)
-- Disable Ollama for static responses
-- Adjust pitch detection sensitivity
-
-## Security
-
-- Change default passwords in `config/asterisk/manager.conf`
-- Don't expose Flask port (5000) to internet
-- Use strong SIP passwords
-- Enable fail2ban for SIP brute force protection
-- Consider VPN for administrative access
-
-## Contributing
-
-Contributions welcome! Ideas:
-- Additional cat personalities
-- Multi-language support
-- Web dashboard for call analytics
-- SMS notifications when calls received
-- Integration with other LLM providers
-- Voice effects and filters
-
-## Roadmap
-
-- [ ] Web dashboard for monitoring calls
-- [ ] Call recording and playback
-- [ ] Multi-language IVR menus
-- [ ] Integration with GPT-4 for cat responses
-- [ ] Voice cloning for custom cat voices
-- [ ] SMS/email notifications
-- [ ] Analytics and call statistics
-
-## Credits
-
-Built with:
-- [Asterisk](https://www.asterisk.org/) - Open-source PBX
-- [Piper TTS](https://github.com/rhasspy/piper) - Fast, local TTS
-- [Parselmouth](https://parselmouth.readthedocs.io/) - Praat voice analysis
-- [Flask](https://flask.palletsprojects.com/) - Python web framework
-- [Ollama](https://ollama.ai/) - Local LLM runtime
+Meow Now started as a phone tree: callers would press 1 or 2 on a real phone
+number behind Asterisk. That version never ran end to end, and it needs a SIP
+trunk and a phone number to test at all, so this rebuild ships the web app
+and leaves telephony out. The core (`analysis`, `mockery`, `cats`) has no web
+dependencies, so an Asterisk AGI adapter can sit on top of it later (tracked in #34).
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) file for details.
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/yourusername/meow-now/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/meow-now/discussions)
-- **Documentation**: [docs/](docs/)
-
----
-
-Made with ❤️ and 😺 by cat enthusiasts, for cat enthusiasts.
+MIT. See [LICENSE](LICENSE).

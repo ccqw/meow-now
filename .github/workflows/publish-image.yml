@@ -1,0 +1,102 @@
+name: publish-image
+
+# Container image for meow-now, linux/amd64 + linux/arm64.
+#
+# Pull requests: build both architectures (no push) and smoke-test the image.
+# main and v*.*.* tags: build and push ghcr.io/<owner>/<repo>:<tag>, where
+# <tag> is `sha-<commit>` on main and the version on a tag push. The run
+# summary prints the manifest digest to pin in a deployment.
+#
+# The build is the shared multi-arch reusable in quadseven/infra-public: each
+# architecture builds on its own native GitHub-hosted runner (no QEMU), and a
+# merge job assembles the manifest list. It logs in to GHCR with
+# GITHUB_TOKEN, so a fork publishes to its own GHCR with no setup. Nothing
+# runs on a self-hosted runner and no registry credential is involved.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write # declared by the reusable; unused for GHCR
+
+concurrency:
+  group: publish-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+      - name: Build, run and probe the image
+        run: |
+          set -euo pipefail
+          docker build -t meow-now:smoke .
+          docker run -d --name smoke --read-only --user 10001 -p 8080:8080 meow-now:smoke
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8080/healthz && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/healthz
+          curl -fsS -o /dev/null http://127.0.0.1:8080/
+          curl -fsS -X POST http://127.0.0.1:8080/api/cats/random/monologue -o /dev/null
+          curl -fsS -o meow.wav 'http://127.0.0.1:8080/api/meow?duration=0.4'
+          curl -fsS -X POST --data-binary @meow.wav -H 'Content-Type: audio/wav' \
+            http://127.0.0.1:8080/api/mockery -o /dev/null
+      - name: Container logs
+        if: always()
+        run: docker logs smoke || true
+
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.t.outputs.tag }}
+    steps:
+      - id: t
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            echo "tag=${REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-${SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: meta
+    uses: quadseven/infra-public/.github/workflows/build.container-multiarch.yml@36977eb4852a58d174d0eeac7760527cba8686c9 # infra-public main 2026-10-17; bump deliberately
+    with:
+      image: ghcr.io/${{ github.repository }}
+      tag: ${{ needs.meta.outputs.tag }}
+      context: .
+      dockerfile: Dockerfile
+      registry-type: ghcr
+      push: ${{ github.event_name != 'pull_request' }}
+
+  summary:
+    needs: [meta, build]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          DIGEST: ${{ needs.build.outputs.digest }}
+        run: |
+          {
+            echo "### meow-now image published"
+            echo
+            echo "    image: ${IMAGE}:${TAG}@${DIGEST}"
+          } >> "$GITHUB_STEP_SUMMARY"

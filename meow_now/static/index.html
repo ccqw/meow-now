@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meow Now</title>
+<meta name="description" content="Talk to a cat. Speech in, meows out.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 54V14l14 12h16l14-12v40z' fill='%23e8743b'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #fbf6ef; --card: #ffffff; --ink: #2b2118; --muted: #7a6a5c;
+    --accent: #e8743b; --accent-ink: #ffffff; --soft: #f3e7da; --line: #eadccd;
+    --ok: #2f8f5b; --bad: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1b1612; --card: #251e18; --ink: #f4ebe1; --muted: #b3a493;
+      --accent: #f08a54; --accent-ink: #1b1612; --soft: #33291f; --line: #3d3127;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
+  header svg { width: 64px; height: 64px; flex: none; }
+  h1 { font-size: 2.2rem; line-height: 1.1; margin: 0; letter-spacing: -0.02em; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  .grid { display: grid; gap: 20px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  section.card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 20px;
+    padding: 22px; display: flex; flex-direction: column; gap: 14px;
+  }
+  h2 { margin: 0; font-size: 1.3rem; }
+  .card > p { margin: 0; color: var(--muted); }
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 999px; cursor: pointer;
+    padding: 12px 20px; background: var(--accent); color: var(--accent-ink);
+    transition: transform 120ms ease-out, opacity 120ms;
+  }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.ghost { background: var(--soft); color: var(--ink); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); display: none; }
+  .recording .rec-dot { display: inline-block; animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+  @media (prefers-reduced-motion: reduce) { .recording .rec-dot { animation: none; } }
+  .meter { height: 8px; border-radius: 4px; background: var(--soft); overflow: hidden; }
+  .meter > div { height: 100%; width: 0; background: var(--accent); transition: width 80ms linear; }
+  .status { min-height: 1.5em; color: var(--muted); font-size: 0.95rem; }
+  .status.error { color: var(--bad); }
+  audio { width: 100%; }
+  .cats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .cat {
+    text-align: left; background: var(--soft); color: var(--ink); border-radius: 14px;
+    padding: 12px; font-weight: 400; border: 2px solid transparent;
+  }
+  .cat strong { display: block; font-size: 0.98rem; }
+  .cat span { color: var(--muted); font-size: 0.85rem; line-height: 1.3; display: block; }
+  .cat[aria-pressed="true"] { border-color: var(--accent); }
+  .subtitle {
+    background: var(--soft); border-radius: 14px; padding: 14px; min-height: 4.5em;
+    font-size: 1.05rem;
+  }
+  .subtitle .w { transition: color 120ms; color: var(--muted); }
+  .subtitle .w.said { color: var(--ink); }
+  .subtitle .who { display: block; font-weight: 700; margin-bottom: 4px; color: var(--ink); }
+  .bars { display: flex; align-items: flex-end; gap: 2px; height: 48px; }
+  .bars i { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; opacity: 0.8; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 0.9rem; text-align: center; }
+  footer a { color: inherit; }
+  label.file { cursor: pointer; text-decoration: underline; color: var(--muted); font-size: 0.9rem; }
+  label.file input { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M8 56V12l15 13h18l15-13v44z" fill="var(--accent)"/>
+      <circle cx="24" cy="36" r="4" fill="var(--bg)"/>
+      <circle cx="40" cy="36" r="4" fill="var(--bg)"/>
+      <path id="mouth" d="M28 46q4 3 8 0" stroke="var(--bg)" stroke-width="3" fill="none" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <h1>Meow Now</h1>
+      <p>Speech in, meows out. Plus four cats with opinions.</p>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="card" id="mockery">
+      <h2>1. Meow Mockery</h2>
+      <p>Talk for up to 60 seconds. A cat will repeat it back: same rhythm, same ups and downs, no words.</p>
+      <div class="row">
+        <button id="rec">Start talking</button>
+        <span class="rec-dot" aria-hidden="true"></span>
+        <span id="clock" class="status"></span>
+      </div>
+      <div class="meter" aria-hidden="true"><div id="level"></div></div>
+      <label class="file">or upload a recording<input type="file" id="file" accept="audio/*"></label>
+      <div id="mock-status" class="status" role="status"></div>
+      <div id="bars" class="bars" aria-hidden="true"></div>
+      <audio id="mock-audio" controls hidden></audio>
+    </section>
+
+    <section class="card" id="talk">
+      <h2>2. Talkative Cats</h2>
+      <p>Pick a cat. It has things to say, and it will say them in meows. Subtitles provided.</p>
+      <div class="cats" id="cats"></div>
+      <div class="row">
+        <button id="speak">Let the cat talk</button>
+        <button id="random" class="ghost">Surprise me</button>
+      </div>
+      <div id="cat-status" class="status" role="status"></div>
+      <div class="subtitle" id="subtitle" aria-live="polite"></div>
+      <audio id="cat-audio" controls hidden></audio>
+    </section>
+  </div>
+
+  <footer>
+    Nothing you record is stored: audio is processed in memory and sent straight back.
+    <a href="/api/docs">API</a>
+  </footer>
+</main>
+
+<script>
+"use strict";
+const MAX_SECONDS = 60;
+const TARGET_RATE = 16000;
+const $ = (id) => document.getElementById(id);
+
+function setStatus(el, text, isError = false) {
+  el.textContent = text;
+  el.classList.toggle("error", isError);
+}
+
+// ---------- audio helpers ----------
+async function toMono16k(arrayBuffer) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const decoded = await ctx.decodeAudioData(arrayBuffer);
+  ctx.close();
+  const seconds = Math.min(decoded.duration, MAX_SECONDS);
+  const frames = Math.max(1, Math.ceil(seconds * TARGET_RATE));
+  const offline = new OfflineAudioContext(1, frames, TARGET_RATE);
+  const src = offline.createBufferSource();
+  src.buffer = decoded;
+  src.connect(offline.destination);
+  src.start();
+  const rendered = await offline.startRendering();
+  return rendered.getChannelData(0);
+}
+
+function encodeWav(samples, rate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const v = new DataView(buf);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, "RIFF"); v.setUint32(4, 36 + samples.length * 2, true); str(8, "WAVE");
+  str(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true); str(36, "data"); v.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+async function postJson(url, body, headers = {}) {
+  const res = await fetch(url, { method: "POST", body, headers });
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* not JSON */ }
+  if (!res.ok) throw new Error((data && data.detail) || ("request failed: " + res.status));
+  return data;
+}
+
+// ---------- meow mockery ----------
+const recBtn = $("rec"), mockStatus = $("mock-status"), mockAudio = $("mock-audio");
+let recorder = null, stream = null, timer = null, meterRaf = null, startedAt = 0;
+
+function drawBars(meows, seconds) {
+  const bars = $("bars");
+  bars.replaceChildren();
+  if (!meows.length) return;
+  const n = 48, buckets = new Array(n).fill(0);
+  for (const m of meows) {
+    const i = Math.min(n - 1, Math.floor((m.start / Math.max(seconds, 0.1)) * n));
+    buckets[i] = Math.max(buckets[i], m.pitch_hz);
+  }
+  for (const b of buckets) {
+    const bar = document.createElement("i");
+    bar.style.height = b ? Math.max(8, Math.min(100, (b / 1200) * 100)) + "%" : "2px";
+    bars.appendChild(bar);
+  }
+}
+
+async function sendRecording(arrayBuffer) {
+  setStatus(mockStatus, "Listening back to you...");
+  mockAudio.hidden = true;
+  try {
+    const samples = await toMono16k(arrayBuffer);
+    const data = await postJson("/api/mockery", encodeWav(samples, TARGET_RATE), { "Content-Type": "audio/wav" });
+    if (!data.meows.length) {
+      setStatus(mockStatus, "The cat heard nothing to mock. Try talking a little louder.");
+      return;
+    }
+    const s = data.input_seconds.toFixed(1);
+    setStatus(mockStatus, data.meows.length + " meows for " + s + " seconds of you." +
+      (data.truncated ? " (Only the first 60 seconds.)" : ""));
+    drawBars(data.meows, data.input_seconds);
+    mockAudio.src = data.audio;
+    mockAudio.hidden = false;
+    mockAudio.play().catch(() => {});
+  } catch (err) {
+    setStatus(mockStatus, "Could not do that: " + err.message, true);
+  }
+}
+
+function stopRecording() {
+  if (recorder && recorder.state === "recording") recorder.stop();
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    setStatus(mockStatus, "This browser cannot record here. Upload a file instead (HTTPS is required for the microphone).", true);
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    setStatus(mockStatus, "No microphone: " + err.message, true);
+    return;
+  }
+  const chunks = [];
+  recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  recorder.onstop = async () => {
+    clearInterval(timer);
+    cancelAnimationFrame(meterRaf);
+    $("level").style.width = "0";
+    stream.getTracks().forEach((t) => t.stop());
+    $("mockery").classList.remove("recording");
+    recBtn.textContent = "Start talking";
+    $("clock").textContent = "";
+    const blob = new Blob(chunks, { type: recorder.mimeType });
+    await sendRecording(await blob.arrayBuffer());
+  };
+
+  // Live input level, so you can see the cat is listening.
+  const actx = new (window.AudioContext || window.webkitAudioContext)();
+  const analyser = actx.createAnalyser();
+  actx.createMediaStreamSource(stream).connect(analyser);
+  const buf = new Float32Array(analyser.fftSize);
+  const tick = () => {
+    analyser.getFloatTimeDomainData(buf);
+    let peak = 0;
+    for (const x of buf) peak = Math.max(peak, Math.abs(x));
+    $("level").style.width = Math.min(100, peak * 140) + "%";
+    if (recorder.state === "recording") meterRaf = requestAnimationFrame(tick);
+    else actx.close();
+  };
+
+  recorder.start();
+  startedAt = Date.now();
+  $("mockery").classList.add("recording");
+  recBtn.textContent = "Done";
+  setStatus(mockStatus, "");
+  tick();
+  timer = setInterval(() => {
+    const left = MAX_SECONDS - Math.floor((Date.now() - startedAt) / 1000);
+    $("clock").textContent = left + "s left";
+    if (left <= 0) stopRecording();
+  }, 250);
+}
+
+recBtn.addEventListener("click", () => {
+  if (recorder && recorder.state === "recording") stopRecording();
+  else startRecording();
+});
+
+$("file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (file) await sendRecording(await file.arrayBuffer());
+  e.target.value = "";
+});
+
+// ---------- talkative cats ----------
+const catStatus = $("cat-status"), catAudio = $("cat-audio"), subtitle = $("subtitle");
+let chosen = null, words = [], wordEls = [];
+
+async function loadCats() {
+  const res = await fetch("/api/cats");
+  const data = await res.json();
+  const box = $("cats");
+  for (const cat of data.cats) {
+    const b = document.createElement("button");
+    b.className = "cat";
+    b.setAttribute("aria-pressed", "false");
+    const name = document.createElement("strong");
+    name.textContent = cat.name;
+    const tag = document.createElement("span");
+    tag.textContent = cat.tagline;
+    b.append(name, tag);
+    b.addEventListener("click", () => {
+      chosen = cat.id;
+      for (const other of box.children) other.setAttribute("aria-pressed", String(other === b));
+    });
+    box.appendChild(b);
+  }
+  if (box.firstChild) box.firstChild.click();
+}
+
+async function talk(catId) {
+  $("speak").disabled = $("random").disabled = true;
+  setStatus(catStatus, "Clearing its throat...");
+  try {
+    const data = await postJson("/api/cats/" + encodeURIComponent(catId) + "/monologue");
+    subtitle.replaceChildren();
+    const who = document.createElement("span");
+    who.className = "who";
+    who.textContent = data.cat.name;
+    subtitle.appendChild(who);
+    words = data.words;
+    wordEls = words.map((w) => {
+      const s = document.createElement("span");
+      s.className = "w";
+      s.textContent = w.word + " ";
+      subtitle.appendChild(s);
+      return s;
+    });
+    setStatus(catStatus, data.source === "ollama" ? "Freshly improvised." : "");
+    catAudio.src = data.audio;
+    catAudio.hidden = false;
+    catAudio.play().catch(() => {});
+  } catch (err) {
+    setStatus(catStatus, "The cat refused: " + err.message, true);
+  } finally {
+    $("speak").disabled = $("random").disabled = false;
+  }
+}
+
+catAudio.addEventListener("timeupdate", () => {
+  const t = catAudio.currentTime;
+  words.forEach((w, i) => wordEls[i].classList.toggle("said", w.start <= t + 0.05));
+});
+catAudio.addEventListener("ended", () => wordEls.forEach((el) => el.classList.add("said")));
+
+$("speak").addEventListener("click", () => talk(chosen || "random"));
+$("random").addEventListener("click", () => talk("random"));
+loadCats().catch((err) => setStatus(catStatus, "Could not load the cats: " + err.message, true));
+</script>
+</body>
+</html>
