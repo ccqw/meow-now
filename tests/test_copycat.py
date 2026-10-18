@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from meow_now import cats, copycat, meows
-from meow_now.analysis import CONTOUR_POINTS
+from meow_now.analysis import CONTOUR_POINTS, Syllable
 from meow_now.audio import SAMPLE_RATE
 
 CATS = [None, *cats.CATS.values()]
@@ -351,6 +351,22 @@ def test_up_against_down_is_always_the_wrong_shape():
     result = copycat.score(p, *performed(q))
     assert result.meows[1].verdict == "shape"
     assert result.meows[1].shape_error > copycat.SHAPE_TOL_ST
+
+
+def test_only_touching_syllables_can_make_one_meow():
+    def syl(start, duration):
+        return Syllable(start, duration, 1.0, 300.0, (1.0,) * CONTOUR_POINTS)
+
+    # Two pieces split at an energy valley, then a separate sound after a gap.
+    units = copycat._units((syl(0.0, 0.2), syl(0.2, 0.15), syl(0.6, 0.2)))
+    assert set(units) == {(0, 1), (1, 2), (2, 3), (0, 2)}
+    assert units[(0, 2)].start == 0.0
+    assert units[(0, 2)].duration == pytest.approx(0.35)
+    # The alignment offers no match for a run that is not a unit, so the gap is never bridged.
+    onsets = np.array([0.0])
+    cost = [[np.zeros(1)] * 4 for _ in range(2)]
+    best, how = copycat._cell(cost, 1, 3, onsets, units, np.ones(1), np.array([0.6]))
+    assert how[0] == 2 and best[0] == 0.0  # only the lone third syllable is offered as a match
 
 
 def test_scoring_is_deterministic():

@@ -347,9 +347,10 @@ def _cell(
     limit = MISS_COST + EXTRA_COST  # a match dearer than a miss plus an extra is never taken
     for k in range(max(0, j - MAX_PIECES), j) if i > 0 else ():
         unit = units.get((k, j))
-        if unit is not None:
-            late = (unit.start - b) / a - onsets[i - 1]
-            offer(cost[i - 1][k] + np.minimum((late / ALIGN_SIGMA_S) ** 2 / 2.0, limit), k)
+        if unit is None:
+            continue  # syllables k..j do not touch, so they cannot be one meow: no match to offer
+        late = (unit.start - b) / a - onsets[i - 1]
+        offer(cost[i - 1][k] + np.minimum((late / ALIGN_SIGMA_S) ** 2 / 2.0, limit), k)
     return best, how
 
 
