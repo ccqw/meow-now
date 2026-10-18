@@ -12,7 +12,9 @@
 # without it, but the "Start talking" button will not.
 #
 # meow-now keeps no state: nothing is written to disk and any number of
-# replicas can serve requests.
+# replicas can serve requests. Two replicas and a PodDisruptionBudget keep it
+# up through node drains; the HorizontalPodAutoscaler adds replicas under
+# load (it needs a metrics server in the cluster).
 ---
 apiVersion: v1
 kind: Namespace
@@ -27,7 +29,7 @@ metadata:
   labels:
     app: meow-now
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: meow-now
@@ -55,6 +57,15 @@ spec:
               value: ""
             - name: OLLAMA_MODEL
               value: llama3.2
+            # Requests reach the pods through the Ingress below, which sets
+            # X-Forwarded-For, so rate limits key on the real client. Set this
+            # to "false" if clients can reach the pods directly.
+            - name: TRUST_PROXY_HEADERS
+              value: "true"
+            - name: RATE_LIMIT_PER_MIN
+              value: "30"
+            - name: MAX_CONCURRENT_RENDERS
+              value: "2"
           readinessProbe:
             httpGet:
               path: /healthz
@@ -77,6 +88,39 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: meow-now
+  namespace: meow-now
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: meow-now
+---
+# Example: scale on CPU, since synthesis is CPU-bound. Remove it to keep a
+# fixed replica count.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: meow-now
+  namespace: meow-now
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: meow-now
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
 ---
 apiVersion: v1
 kind: Service

@@ -63,7 +63,17 @@ All settings are environment variables, and all are optional. Copy
 | `OLLAMA_URL` | unset | Base URL of an Ollama server, e.g. `http://your-ollama-host.internal:11434`. Unset means built-in monologues only |
 | `OLLAMA_MODEL` | `llama3.2` | Ollama model the cats use |
 | `MAX_UPLOAD_MB` | `8` | Largest recording the API accepts. 60 s of 16 kHz mono WAV is about 2 MB |
+| `RATE_LIMIT_PER_MIN` | `30` | Requests per minute each client may make to the synthesis endpoints (`POST /api/mockery` and `POST /api/cats/{id}/monologue`), with bursts up to the same number. Over it the API answers 429 with `Retry-After`. `0` turns the limit off |
+| `TRUST_PROXY_HEADERS` | `false` | Set to `true` behind a reverse proxy you run, so the rate limit keys on the last `X-Forwarded-For` address (the one your proxy saw) instead of the proxy's own address. Leave it off when clients connect directly, or they can pick their own key |
+| `MAX_CONCURRENT_RENDERS` | `4` | Syntheses a replica runs at once. Further requests wait for a slot (see the next row), then get 503 with `Retry-After`. `0` means no cap |
+| `RENDER_WAIT_S` | `5` | Seconds a request waits for a free synthesis slot before the 503 |
 | `LOG_LEVEL` | `INFO` | Python log level |
+
+`meow-now serve` logs one JSON object per line. Each request gets one line
+with its method, path (no query string), status and `duration_ms`. Client
+addresses, query strings and bodies are never logged, so no recording leaves
+a trace. Every replica keeps its own rate-limit and concurrency counts in
+memory, so the effective limit grows with the number of replicas.
 
 If Ollama is unreachable, slow (over 20 s), or replies with something too
 short, the cat quietly falls back to a built-in line. The page shows
@@ -154,8 +164,19 @@ curl -s -o purr.wav 'http://localhost:8080/api/meow?duration=2&kind=purr'
 All audio the server returns is 24 kHz mono 16-bit WAV.
 
 Errors are JSON `{"detail": ...}` with status 400 (empty body), 404 (unknown
-cat), 413 (too large), 415 (not a readable WAV, or below 8 kHz) or 422 (bad
-query parameter).
+cat), 413 (too large), 415 (not a readable WAV, or below 8 kHz), 422 (bad
+query parameter), 429 (over the rate limit) or 503 (every synthesis slot
+busy). 429 and 503 carry a `Retry-After` header in seconds.
+
+Every response carries security headers: a Content Security Policy,
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
+`Permissions-Policy: microphone=(self)`, `X-Frame-Options: DENY` and
+`frame-ancestors 'none'`. The page keeps its script and style inline, so
+instead of `'unsafe-inline'` or per-block hashes (which would change with
+every edit to the page) the server stamps a fresh nonce on its `<script>` and
+`<style>` tags for each response and allows only that nonce. The policy also
+allows Google Fonts and `data:`/`blob:` audio. The `/api/docs` page loads
+Swagger UI from its CDN and gets a separate, looser policy.
 
 ## Deploying
 
@@ -167,8 +188,12 @@ needs about 100 MB of memory and a fraction of a CPU at rest.
 
 [`deploy/kubernetes/meow-now.yaml`](deploy/kubernetes/meow-now.yaml) has a
 Namespace, Deployment (non-root, read-only root filesystem, all capabilities
-dropped, `/healthz` probes), Service and an example Ingress. Replace the
-`IMAGE` and `HOSTNAME` placeholders, then:
+dropped, `/healthz` probes) with 2 replicas, a PodDisruptionBudget, an
+example HorizontalPodAutoscaler (70% CPU, needs a metrics server), a Service
+and an example Ingress. The example Ingress forwards the client address, so
+the Deployment sets `TRUST_PROXY_HEADERS=true`; if clients can reach the pods
+without going through your proxy, set it back to `false`. Replace the `IMAGE`
+and `HOSTNAME` placeholders, then:
 
 ```sh
 kubectl apply -f deploy/kubernetes/meow-now.yaml
@@ -208,7 +233,10 @@ commands on Python 3.11, 3.12 and 3.13.
 `tests/browser` drives the real page in headless Chromium against a live local
 server, with a fake microphone: it checks that the cats load, that recording
 and stopping returns a mockery with audio and bars, that a silent recording
-shows the cat's caption, and that a monologue plays with subtitles. It needs Playwright and a browser, so plain `pytest` skips it.
+shows the cat's caption, and that a monologue plays with subtitles, all
+without a single Content Security Policy violation (and that the policy
+really blocks an inline script without the nonce). It needs Playwright and a
+browser, so plain `pytest` skips it.
 To run it:
 
 ```sh
@@ -229,6 +257,8 @@ meow_now/
   mockery.py    Meow Mockery: speech -> meows
   cats.py       Talkative Cats: personalities, Ollama, cat speech
   web.py        FastAPI app
+  limits.py     per-client rate limit and synthesis concurrency cap
+  middleware.py security headers, JSON access log
   static/       the single-page UI (no build step, no frameworks)
   __main__.py   `meow-now serve` and `meow-now mock`
 tests/          pytest suite (synthetic speech, no fixtures on disk)
