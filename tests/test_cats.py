@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import numpy as np
 import pytest
@@ -110,3 +112,21 @@ def test_unreachable_ollama_falls_back(monkeypatch):
 
     _fake_ollama(monkeypatch, handler)
     assert cats.monologue(cats.CATS["wise"], ollama_url="http://nowhere").source == "builtin"
+
+
+@pytest.mark.parametrize("cat_id", sorted(cats.CATS))
+def test_ollama_prompt_has_no_phone_wording(monkeypatch, cat_id):
+    cat = cats.CATS[cat_id]
+    seen = {}
+
+    def handler(request):
+        seen["prompt"] = json.loads(request.read())["prompt"]
+        return httpx.Response(200, json={"response": "Feed me now, human, please."})
+
+    _fake_ollama(monkeypatch, handler)
+    cats.ask_ollama(cat, "http://ollama:11434", "m")
+    prompt = seen["prompt"].lower()
+    assert "call" not in prompt
+    assert "phone" not in prompt
+    assert cat.name in seen["prompt"]
+    assert str(cats.MAX_WORDS) in seen["prompt"]
