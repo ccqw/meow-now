@@ -114,7 +114,7 @@ Interactive docs are served at `/api/docs`.
 |---|---|---|
 | `GET /healthz` | | `{"status": "ok", "version": ...}` |
 | `GET /api/cats` | | The cats, and whether Ollama is configured |
-| `POST /api/mockery` | A PCM WAV file as the raw body (`Content-Type: audio/wav`), at least 8 kHz, any channels; only the first 60 s are used | `{"audio": "data:audio/wav;base64,...", "input_seconds", "truncated", "meows": [{start, duration, pitch_hz, your_pitch_hz, kind}]}` |
+| `POST /api/mockery` | A PCM WAV file as the raw body (`Content-Type: audio/wav`), at least 8 kHz, any channels; only the first 60 s are used. Optional `?seed=` (0 or more) makes the result reproducible | `{"audio": "data:audio/wav;base64,...", "seed", "input_seconds", "truncated", "meows": [{start, duration, pitch_hz, your_pitch_hz, kind, contour, loudness}]}`. `contour` is the syllable's pitch over its median pitch through time (empty when unvoiced); `loudness` is 0 to 1, relative to the loudest syllable |
 | `POST /api/cats/{id}/monologue` | `id` is `grumpy`, `wise`, `anxious`, `diva` or `random`; optional `?seed=` | `{"cat", "text", "source": "ollama" or "builtin", "words": [{word, start}], "audio"}` |
 | `GET /api/meow` | `pitch` (200 to 1500 Hz), `duration` (0.08 to 2 s), `kind`, `seed` | One meow as `audio/wav` |
 

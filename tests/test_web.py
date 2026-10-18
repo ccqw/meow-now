@@ -44,6 +44,43 @@ def test_mockery_round_trip(client):
     assert rate == 16_000 and len(samples) > 0
 
 
+def test_mockery_seed_is_reproducible(client):
+    wav = encode_wav(speech_like([120, 160, 200]), RATE)
+    headers = {"content-type": "audio/wav"}
+    first = client.post("/api/mockery?seed=42", content=wav, headers=headers)
+    second = client.post("/api/mockery?seed=42", content=wav, headers=headers)
+    assert first.status_code == second.status_code == 200
+    assert first.json()["seed"] == 42
+    assert first.json() == second.json()
+    assert first.content == second.content
+
+
+def test_mockery_random_seed_is_echoed(client):
+    wav = encode_wav(speech_like([150]), RATE)
+    data = client.post("/api/mockery", content=wav, headers={"content-type": "audio/wav"}).json()
+    assert isinstance(data["seed"], int) and data["seed"] >= 0
+
+
+def test_mockery_meows_carry_contour_and_loudness(client):
+    wav = encode_wav(speech_like([120, 160, 200]), RATE)
+    data = client.post("/api/mockery?seed=1", content=wav).json()
+    assert data["meows"]
+    for meow in data["meows"]:
+        assert 0.0 <= meow["loudness"] <= 1.0
+        assert meow["loudness"] == round(meow["loudness"], 3)
+        if meow["your_pitch_hz"] is None:
+            assert meow["contour"] == []
+        else:
+            assert meow["contour"]
+        assert all(0.5 <= c <= 2.0 and c == round(c, 3) for c in meow["contour"])
+    assert max(m["loudness"] for m in data["meows"]) == 1.0
+
+
+def test_mockery_rejects_negative_seed(client):
+    wav = encode_wav(speech_like([150]), RATE)
+    assert client.post("/api/mockery?seed=-1", content=wav).status_code == 422
+
+
 def test_mockery_rejects_bad_input(client):
     assert client.post("/api/mockery", content=b"").status_code == 400
     assert client.post("/api/mockery", content=b"nope").status_code == 415
